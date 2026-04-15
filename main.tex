@@ -1,15 +1,19 @@
-\documentclass{book}
+\documentclass[11pt, fleqn, oneside, openany]{book}
 
 % --- Preamble (The UI/Styling) ---
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{hyperref}
 \usepackage{graphicx}
+\usepackage{import}
 \usepackage[backend=biber]{biblatex}
 \usepackage{listings} % For your code blocks
 \usepackage{tikz}     % For your high-precision diagrams
+
+\usetikzlibrary{shapes.geometric, arrows}
 \addbibresource{references.bib}
 
+% --- Book Metadata ---
 \title{Software - Architecture, Design, Test}
 \author{Troels Mortensen}
 \date{\today}
@@ -17,14 +21,39 @@
 \begin{document}
 
 \maketitle
+% --- Front Matter (No Part page) ---
+\frontmatter
 \tableofcontents
 
-\chapter{Architecture Foundations}
-As Martin Fowler explains in his foundational work \cite{fowler2002patterns}, 
-patterns help us solve recurring problems in software systems.
+%\subimport{parts/prematter/preface/}{preface}
+%\subimport{parts/prematter/introduction/}{introduction}
 
-\section{A Small Test}
-Testing the compilation process.
 
+% --- Main Content ---
+\mainmatter
+
+% PART 1
+\part{Architectural Styles}
+%\subimport{parts/architectural-styles/2-layered/}{2-layered}
+%\subimport{parts/architectural-styles/3-layered/}{3-layered}
+%parts\architectural-styles\hexagonal\hexagonal
+\subimport{parts/architectural-styles/hexagonal/}{hexagonal}
+%\subimport{parts/architectural-styles/onion/}{onion}
+%\subimport{parts/architectural-styles/clean/}{clean}
+%\subimport{parts/architectural-styles/vertical-slice/}{vertical-slice}
+%
+%% PART 2
+%\part{Architectural Patterns}
+%\subimport{parts/arch-patterns/mvvm/}{mvvm}
+%\subimport{parts/arch-patterns/cqrs/}{cqrs}
+%\subimport{parts/arch-patterns/repr/}{repr}
+%
+%% PART 5
+%\part{Software Testing}
+%\subimport{parts/testing/unit/}{unit}
+%\subimport{parts/testing/integration/}{integration}
+
+% --- Back Matter ---
+\backmatter
 \printbibliography
 \end{document}

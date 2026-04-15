@@ -1,0 +1,22 @@
+\begin{tikzpicture}[
+    core/.style={regular polygon, regular polygon sides=6, shape border rotate=30, draw=blue!70, fill=blue!8, very thick, minimum size=5.5cm, align=center},
+    adapter/.style={rectangle, draw=orange!80, fill=orange!12, thick, rounded corners, minimum width=2.5cm, minimum height=0.85cm, align=center, font=\small},
+    port/.style={circle, draw=black!70, fill=white, minimum size=0.45cm, inner sep=0pt},
+    lbl/.style={font=\scriptsize, align=center}
+]
+    \node[core] (core) {Application Core};
+
+    \node[adapter] (db)    at (5.4, 1.6) {Database Adapter};
+    \node[adapter] (email) at (5.4, 0.0) {Email Adapter};
+    \node[adapter] (pay)   at (5.4,-1.6) {Payment API Adapter};
+
+    \node[port] (p1) at (core.30) {};
+    \node[port] (p2) at (core.0) {};
+    \node[port] (p3) at (core.330) {};
+    \node[lbl] at (1.9, 2.0) {Output Port};
+    \node[lbl] at (1.9, -2.0) {Output Port};
+
+    \draw[->, thick] (p1) -- (db.west);
+    \draw[->, thick] (p2) -- (email.west);
+    \draw[->, thick] (p3) -- (pay.west);
+\end{tikzpicture}

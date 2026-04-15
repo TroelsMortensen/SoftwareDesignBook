@@ -1,1 +1,373 @@
-f
+\chapter{Hexagonal Architecture}
+\label{ch:hexagonal}
+
+Hexagonal Architecture, also known as \textit{Ports and Adapters}, was introduced by Alistair Cockburn to protect application behavior from infrastructure concerns.\autocite{cockburn2005hexagonal} The key idea is simple: we keep application logic in the center, and let external technologies connect through explicit boundaries. These boundaries are called \textit{ports}, and are generally just interfaces in your code. A modern introduction with practical examples is provided by Huttunen.\autocite{huttunen2026hexagonal}
+
+\section{Why We Use Hexagonal Architecture}
+\label{sec:hexagonal_why}
+
+Many systems start in a layered style, but business rules often leak into controllers, ORMs, and SDK-specific code. Basically just places where it does not belong. This coupling makes change expensive: replacing persistence technology, adding a new interface, or testing behavior can require touching several technical layers.
+
+Similarly to a 3-layered architecture, we want to separate the concerns of the application into different parts.
+
+Hexagonal architecture addresses this by separating concerns into an \textit{inside} and an \textit{outside}. The inside contains the behavior we care about, while the outside contains delivery and infrastructure details. Comparing to the 3-layered architecture, the presentation and persistence will be considered the "outside" of the application.
+
+\begin{figure}[htbp]
+    \centering
+    \input{assets/hex_step1_purpose_core_only}
+    \caption{The first step is to define a protected application core.}
+    \label{fig:hexagonal_core_only}
+\end{figure}
+
+\subsection{Purpose of the Inner Hexagon}
+\label{sec:hexagonal_inner_purpose}
+
+The hexagon is a visual metaphor, not a geometric requirement. Cockburn has said it was simply a shape that was not yet associated with anything in software architecture. It reminds us that the core should be reachable from many directions, or input devices, without being rewritten for each one. Whether requests come from a GUI, a Web API, a CLI application, a batch job, or an automated test, they should trigger the same use-case behavior.
+
+\section{Step 1: Start with Application Logic}
+\label{sec:hexagonal_step1}
+
+At the beginning, we model only application behavior, for example in \texttt{PlaceOrderService} or \texttt{TransferFundsUseCase}. At this stage we do not need to commit to \texttt{Spring}, \texttt{ASP.NET}, \texttt{PostgreSQL}, or a message broker. We intentionally start here because architecture decisions become clearer when behavior is visible first.
+
+For the rest of the chapter, we use one running Java example: \texttt{Order Placement}. This gives us one consistent slice from driving adapter to core behavior to driven adapters.
+
+\begin{figure}[htbp]
+    \centering
+    \input{assets/hex_step2_core_structure}
+    \caption{Initial core structure focused on use cases and policies.}
+    \label{fig:hexagonal_core_structure}
+\end{figure}
+
+\subsection{What We Delay on Purpose}
+\label{sec:hexagonal_delay_decisions}
+
+We deliberately delay technology choices. This gives us two benefits:
+\begin{itemize}
+    \item We can validate business behavior early without waiting for full infrastructure setup.
+    \item We avoid coupling use-case logic to framework types and transport protocols.
+\end{itemize}
+
+\subsection{Java Skeleton of the Core}
+\label{sec:hexagonal_java_core_skeleton}
+
+The initial core can be expressed as a use-case-focused Java API and service implementation:
+
+\begin{lstlisting}[language=Java]
+public interface PlaceOrderPort {
+    OrderId placeOrder(PlaceOrderCommand command);
+}
+
+public final class PlaceOrderService implements PlaceOrderPort {
+    private final SaveOrderPort saveOrderPort;
+    private final PublishOrderEventPort publishOrderEventPort;
+    // Constructor omitted for brevity.
+
+    @Override
+    public OrderId placeOrder(PlaceOrderCommand command) {
+        Order order = Order.place(command.customerId(), command.lines());
+        saveOrderPort.save(order);
+        publishOrderEventPort.publishPlaced(order.id());
+        return order.id();
+    }
+}
+\end{lstlisting}
+
+\section{Step 2: Add Driving Adapters and Input Ports}
+\label{sec:hexagonal_step2}
+
+Once the core behavior exists, we connect ways to invoke it. These are \textit{driving adapters} (also called primary adapters). Their responsibility is to translate external input into calls on input ports, which are interfaces representing use cases.
+
+\begin{figure}[htbp]
+    \centering
+    \input{assets/hex_step3_driving_adapters}
+    \caption{Driving adapters call input ports to invoke application behavior.}
+    \label{fig:hexagonal_driving_adapters}
+\end{figure}
+
+\subsection{Examples of Driving Adapters}
+\label{sec:hexagonal_driving_examples}
+
+Common driving adapters include:
+\begin{itemize}
+    \item a REST controller translating HTTP requests into use-case calls,
+    \item a CLI handler translating command arguments into use-case calls,
+    \item a GUI presenter/controller translating user events into use-case calls,
+    \item a message consumer translating broker events into use-case calls,
+    \item and automated tests that call input ports directly.
+\end{itemize}
+
+\subsection{Input Port and Driving Adapter in Java}
+\label{sec:hexagonal_java_driving_adapter}
+
+The driving adapter talks only to the input port and maps transport-specific models to use-case models:
+
+\begin{lstlisting}[language=Java]
+@RestController
+@RequestMapping("/orders")
+public class PlaceOrderController {
+    private final PlaceOrderPort placeOrderPort; // Dependency injected.
+
+    @PostMapping
+    public ResponseEntity<String> place(@RequestBody OrderRequest request) {
+        PlaceOrderCommand command =
+                new PlaceOrderCommand(request.customerId(), request.lines());
+        OrderId orderId = placeOrderPort.placeOrder(command);
+        return ResponseEntity.accepted().body(orderId.value());
+    }
+}
+\end{lstlisting}
+
+\section{Step 3: Add Driven Adapters and Output Ports}
+\label{sec:hexagonal_step3}
+
+The core eventually needs support from external capabilities such as storage, notifications, or third-party APIs. We model these needs as output ports, and implement those ports with \textit{driven adapters} (secondary adapters). This is where dependency inversion becomes concrete: the core depends on interfaces, while infrastructure depends on those same interfaces.\autocite{fowler2002patterns}
+
+\begin{figure}[htbp]
+    \centering
+    \input{assets/hex_step4_driven_adapters}
+    \caption{Driven adapters implement output ports for infrastructure concerns.}
+    \label{fig:hexagonal_driven_adapters}
+\end{figure}
+
+\subsection{Examples of Driven Adapters}
+\label{sec:hexagonal_driven_examples}
+
+Typical driven adapters are:
+\begin{itemize}
+    \item a repository adapter for \texttt{PostgreSQL} or \texttt{MongoDB},
+    \item an email adapter for \texttt{SMTP},
+    \item a payment adapter for an external PSP API,
+    \item and a publisher adapter for a message broker.
+\end{itemize}
+
+\subsection{Output Ports and a Driven Adapter in Java}
+\label{sec:hexagonal_java_driven_adapter}
+
+On the driven side, the core defines output ports, and infrastructure implements them:
+
+\begin{lstlisting}[language=Java]
+public interface LoadOrderPort {
+    Optional<Order> loadById(OrderId orderId);
+}
+
+public interface SaveOrderPort {
+    void save(Order order);
+}
+
+public final class JpaOrderRepositoryAdapter implements SaveOrderPort {
+    private final SpringDataOrderRepository repository; // Dependency injected.
+
+    @Override
+    public void save(Order order) {
+        repository.save(OrderEntity.fromDomain(order));
+    }
+}
+\end{lstlisting}
+
+\subsection{Mapping Boundaries in Java}
+\label{sec:hexagonal_java_mapping_boundaries}
+
+Mapping code belongs in adapters, because adapters translate between outside models and core models:
+
+\begin{lstlisting}[language=Java]
+public record OrderRequest(String customerId, List<OrderLineRequest> lines) {}
+public record PlaceOrderCommand(String customerId, List<OrderLine> lines) {}
+
+PlaceOrderCommand command =
+        new PlaceOrderCommand(request.customerId(), lineMapper.toDomain(request.lines()));
+\end{lstlisting}
+
+\begin{lstlisting}[language=Java]
+@Entity
+public class OrderEntity {
+    @Id
+    private String id;
+
+    public static OrderEntity fromDomain(Order order) {
+        OrderEntity entity = new OrderEntity();
+        entity.id = order.id().value();
+        return entity;
+    }
+}
+\end{lstlisting}
+
+\subsection{Recommended Java Package Layout}
+\label{sec:hexagonal_package_layout}
+
+A package convention gives us a practical guardrail. We recommend organizing the module by architectural role so that core code remains stable while adapters can change:
+
+\begin{figure}[htbp]
+    \centering
+    \input{assets/hex_step7_package_layout}
+    \caption{Pathfinder-style Java package layout for a hexagonal module.}
+    \label{fig:hexagonal_package_layout}
+\end{figure}
+
+A typical package layout for the running example is:
+\begin{lstlisting}[language=Java]
+com.example.orders
+  domain
+  application
+    port.in
+    port.out
+  adapters
+    in.web
+    in.messaging
+    out.persistence
+    out.events
+  config
+\end{lstlisting}
+
+\subsection{Dependency Rules}
+\label{sec:hexagonal_dependency_rules}
+
+With this layout, we keep dependency directions explicit:
+\begin{itemize}
+    \item \texttt{domain} and \texttt{application} do not depend on \texttt{adapters}.
+    \item \texttt{adapters.in.*} depend on input ports in \texttt{application.port.in}.
+    \item \texttt{application} depends on output ports in \texttt{application.port.out}.
+    \item \texttt{adapters.out.*} implement output ports and may depend on framework libraries.
+    \item \texttt{config} performs wiring and can see both core and adapters.
+\end{itemize}
+
+\subsection{How to Enforce the Rules}
+\label{sec:hexagonal_enforce_rules}
+
+We can enforce these conventions in daily work by combining three practices:
+\begin{itemize}
+    \item package naming rules in code reviews,
+    \item architecture tests that forbid disallowed imports,
+    \item and a checklist in pull requests for boundary crossings.
+\end{itemize}
+
+\subsection{Requires vs Provides Contracts}
+\label{sec:hexagonal_requires_vs_provides}
+
+The most important design choice on the driven side is contract ownership. In hexagonal architecture, the core defines contracts by what the use cases \textit{require}. For example, a core service may depend on \texttt{LoadOrderPort} and \texttt{SaveOrderPort}, because those capabilities are needed to complete the use case.
+
+In many layered implementations, interfaces are shaped by what the persistence layer \textit{provides}, for example a repository abstraction aligned to ORM operations. That approach can still be effective, and we can still mock those interfaces. The difference is who drives the abstraction: in hexagonal architecture, required core behavior drives the port definition; in provider-oriented layering, available infrastructure capabilities often drive the interface definition.
+
+This distinction matters during development. With core-owned output ports, we can implement and test use cases before deciding the final database, broker, or external API integration.
+
+\begin{figure}[htbp]
+    \centering
+    \input{assets/hex_step6_requires_vs_provides}
+    \caption{Contract ownership comparison: core-defined required ports vs provider-defined interfaces.}
+    \label{fig:hexagonal_requires_vs_provides}
+\end{figure}
+
+\section{Step 4: Evolving the Core with a Domain Model}
+\label{sec:hexagonal_step4}
+
+In some projects, the first hexagonal version uses lightweight application services and simple data structures. That is a valid starting point. As rules become richer, we often add an explicit domain model to keep invariants and behavior close to business concepts.
+
+\begin{figure}[htbp]
+    \centering
+    \input{assets/hex_step5_domain_evolution}
+    \caption{Evolution of the inner hexagon from use-case-only logic to use cases plus domain model.}
+    \label{fig:hexagonal_domain_evolution}
+\end{figure}
+
+\subsection{Why the Domain Model May Come Later}
+\label{sec:hexagonal_domain_later}
+
+Adding a domain model later is not a failure of architecture; it is often a sign of responsible evolution. We first establish boundaries and interaction patterns, then deepen the model when complexity justifies it.
+
+\section{Testing Across the Hexagon Boundary}
+\label{sec:hexagonal_testing}
+
+The separation of concerns gives us a practical testing strategy:\autocite{huttunen2026hexagonal}
+\begin{itemize}
+    \item test application behavior through input ports without real infrastructure,
+    \item test adapters against their technologies in focused integration tests,
+    \item and keep end-to-end tests for wiring and critical user paths.
+\end{itemize}
+
+\subsection{Why Ports Improve Testability}
+\label{sec:hexagonal_why_ports_testability}
+
+Ports improve testability because they create explicit seams around behavior. An input port gives us a stable way to invoke a use case, while output ports let us replace infrastructure with in-memory test doubles. In practice, we execute a use case through an input port and provide fake implementations such as \texttt{LoadOrderPort} or \texttt{PublishOrderEventPort}. This keeps most tests fast and deterministic, because they verify business rules without requiring a running database, broker, or HTTP stack.
+
+This is not exclusive to hexagonal architecture. A disciplined layered architecture can also isolate dependencies behind interfaces and achieve good tests. The practical difference is that hexagonal architecture makes these seams a first-class design element around the core, so isolated tests become the default rather than an optional refactoring.
+
+\subsection{Testing Slices with Java}
+\label{sec:hexagonal_java_testing_slices}
+
+In Java, we can keep most behavior tests focused on the core and use only a few infrastructure tests:
+
+\begin{lstlisting}[language=Java]
+class PlaceOrderServiceTest {
+    @Test
+    void placesOrderAndPublishesEvent() {
+        FakeSaveOrderPort save = new FakeSaveOrderPort();
+        FakePublishOrderEventPort publish = new FakePublishOrderEventPort();
+        PlaceOrderService service = new PlaceOrderService(save, publish);
+
+        OrderId id = service.placeOrder(new PlaceOrderCommand("c-42", List.of()));
+
+        assertTrue(save.savedOrderIds().contains(id));
+        assertTrue(publish.publishedOrderIds().contains(id));
+    }
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=Java]
+@DataJpaTest
+class JpaOrderRepositoryAdapterTest {
+    @Autowired
+    SpringDataOrderRepository repository;
+
+    @Test
+    void persistsMappedOrderEntity() {
+        JpaOrderRepositoryAdapter adapter = new JpaOrderRepositoryAdapter(repository);
+        adapter.save(Order.place(new CustomerId("c-42"), List.of()));
+        assertEquals(1, repository.count());
+    }
+}
+\end{lstlisting}
+
+\section{Practical Trade-offs}
+\label{sec:hexagonal_tradeoffs}
+
+Hexagonal architecture improves replaceability and testability, but it introduces explicit interfaces and mapping code. For small CRUD-heavy systems, that can feel heavy. For systems with changing workflows, multiple interfaces, or expensive integration points, the added structure usually pays for itself over time.
+
+\subsection{Hexagonal and Layered: A Preview}
+\label{sec:hexagonal_layered_preview}
+
+Hexagonal and layered architecture are not enemies; both can be implemented well or poorly. A layered design with clear interfaces and dependency inversion can achieve strong testability. The practical difference we emphasize is orientation: hexagonal architecture centers on inside/outside boundaries and core-owned required ports, while layered architecture commonly centers on presentation, application, and persistence layers.
+
+In the upcoming layered chapter, we will compare these styles directly and show where they overlap, where they differ, and when each framing is likely to be the better fit.
+
+\subsection{When Migration Is Worth It}
+\label{sec:hexagonal_migration_when}
+
+Migration from layered to hexagonal is most useful when integration change is frequent, tests are dominated by slow end-to-end flows, or business rules are spread across controllers and repositories. If those symptoms are not present, a disciplined layered approach may remain the better economic choice.
+
+\subsection{Incremental Migration Steps}
+\label{sec:hexagonal_migration_steps}
+
+We can migrate incrementally instead of rewriting everything:
+\begin{enumerate}
+    \item select one high-value use case (for example \texttt{PlaceOrder}),
+    \item define an input port and required output ports for that use case,
+    \item move business logic into an application service behind the input port,
+    \item wrap current repository or API integrations as driven adapters,
+    \item add fast core tests that use fake output ports,
+    \item then repeat use case by use case.
+\end{enumerate}
+
+\subsection{Migration Risks and Mitigations}
+\label{sec:hexagonal_migration_risks}
+
+During transition, we often see duplicate models and mixed conventions. We reduce this risk by assigning explicit ownership per use case, tracking migration in small milestones, and refusing partial boundary rewrites that leave unclear dependencies.
+
+\subsection{Common Implementation Mistakes}
+\label{sec:hexagonal_common_mistakes}
+
+Even with a good structure, implementations can drift. Typical mistakes include:
+\begin{itemize}
+    \item placing framework annotations in core domain models and use cases,
+    \item exposing \texttt{JPA} entities directly across the core boundary,
+    \item defining repository interfaces around provider capabilities rather than use-case needs,
+    \item and embedding HTTP or SQL concerns in application services.
+\end{itemize}

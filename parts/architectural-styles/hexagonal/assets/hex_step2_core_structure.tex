@@ -1,0 +1,9 @@
+\begin{tikzpicture}[
+    core/.style={regular polygon, regular polygon sides=6, shape border rotate=30, draw=blue!70, fill=blue!8, very thick, minimum size=5.8cm, align=center},
+    box/.style={rectangle, draw=black!70, fill=white, rounded corners, minimum width=2.7cm, minimum height=0.75cm, align=center, font=\small}
+]
+    \node[core] (core) {};
+    \node[box, yshift=0.75cm] at (core.center) {Use Cases};
+    \node[box, yshift=-0.15cm] at (core.center) {Application Services};
+    \node[box, yshift=-1.05cm] at (core.center) {Policies and Rules};
+\end{tikzpicture}

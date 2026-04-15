@@ -1,0 +1,19 @@
+\begin{tikzpicture}[
+    core/.style={regular polygon, regular polygon sides=6, shape border rotate=30, draw=blue!70, fill=blue!8, very thick, minimum size=4.5cm, align=center},
+    box/.style={rectangle, draw=black!70, fill=white, rounded corners, minimum width=2.0cm, minimum height=0.65cm, align=center, font=\scriptsize},
+    title/.style={font=\small}
+]
+    \node[title] at (-3.2, 2.7) {Initial Inner Hex};
+    \node[core] (left) at (-3.2,0) {};
+    \node[box] at (-3.2,0.35) {Use Cases};
+    \node[box] at (-3.2,-0.55) {Application Services};
+
+    \node[title] at (3.2, 2.7) {Evolved Inner Hex};
+    \node[core] (right) at (3.2,0) {};
+    \node[box] at (3.2,0.95) {Use Cases};
+    \node[box] at (3.2,0.05) {Application Services};
+    \node[box] at (3.2,-0.85) {Domain Model};
+
+    \draw[->, thick] (-0.9,0) -- (0.9,0);
+    \node[font=\scriptsize] at (0,0.45) {Rules and invariants grow};
+\end{tikzpicture}
