@@ -1,19 +1,79 @@
 \documentclass[11pt, fleqn, oneside, openany]{book}
 
-% --- Preamble (The UI/Styling) ---
+% --- 1. CORE PACKAGES ---
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage{hyperref}
+\usepackage[pdfpagelabels]{hyperref}
 \usepackage{graphicx}
 \usepackage{import}
+\usepackage[a4paper, margin=2.5cm]{geometry}
 \usepackage[backend=biber]{biblatex}
-\usepackage{listings} % For your code blocks
-\usepackage{tikz}     % For your high-precision diagrams
+\usepackage{xcolor}
+\usepackage{needspace}
+\usepackage{tikz}
+
+\usepackage{xcolor} % Already in your file
+\usepackage[colorinlistoftodos, prependcaption, textsize=tiny]{todonotes}
+
+% Custom command for a big, inline TODO box that's easy to see
+\newcommand{\todobig}[1]{\todo[inline, color=red!20, size=\small]{#1}}
 
 \usetikzlibrary{shapes.geometric, arrows}
+
+% --- 2. COLORS (ReSharper Night) ---
+\definecolor{rs_bg}{RGB}{30, 30, 30}
+\definecolor{rs_text}{RGB}{220, 220, 220}
+\definecolor{rs_keyword}{RGB}{86, 156, 214}
+\definecolor{rs_type}{RGB}{78, 201, 176}
+\definecolor{rs_string}{RGB}{214, 157, 133}
+\definecolor{rs_comment}{RGB}{87, 166, 74}
+\definecolor{rs_linenos}{RGB}{43, 145, 175}
+\definecolor{rs_border}{RGB}{63, 63, 70}
+
+% --- 3. CODE STYLING (Listings) ---
+\usepackage{listings}
+
+\lstdefinestyle{rider_style}{
+    commentstyle=\color{rs_comment},
+    stringstyle=\color{rs_string},
+    basicstyle=\ttfamily\small\color{rs_text},
+    breakatwhitespace=false,
+    breaklines=true,
+    numbers=left,
+    numberstyle=\tiny\color{rs_linenos},
+    numbersep=10pt,
+    showstringspaces=false,
+    tabsize=4,
+    keywordstyle=\color{rs_keyword},
+    % Use ! for escaping to LaTeX - it's much safer than UTF-8 symbols like §
+    escapeinside={!}{!},
+    inputencoding=utf8,
+    extendedchars=true
+}
+
+% --- 4. PRETTY BOXES (tcolorbox) ---
+\usepackage[most]{tcolorbox}
+\tcbuselibrary{listings}
+
+\newtcblisting{ridercode}[2][]{
+    enhanced,
+    arc=5pt,
+    boxrule=1pt,
+    colback=rs_bg,
+    colframe=rs_border,
+    left=22pt,
+    listing only,
+    listing engine=listings,
+    listing options={
+        style=rider_style,
+        language=#2
+    },
+    #1
+}
+
 \addbibresource{references.bib}
 
-% --- Book Metadata ---
+% --- BOOK METADATA ---
 \title{Software - Architecture, Design, Test}
 \author{Troels Mortensen}
 \date{\today}
@@ -21,39 +81,18 @@
 \begin{document}
 
 \maketitle
-% --- Front Matter (No Part page) ---
+
 \frontmatter
 \tableofcontents
+\listoftodos
+\clearpage
 
-%\subimport{parts/prematter/preface/}{preface}
-%\subimport{parts/prematter/introduction/}{introduction}
-
-
-% --- Main Content ---
 \mainmatter
 
-% PART 1
 \part{Architectural Styles}
-%\subimport{parts/architectural-styles/2-layered/}{2-layered}
-%\subimport{parts/architectural-styles/3-layered/}{3-layered}
-%parts\architectural-styles\hexagonal\hexagonal
 \subimport{parts/architectural-styles/hexagonal/}{hexagonal}
-%\subimport{parts/architectural-styles/onion/}{onion}
-%\subimport{parts/architectural-styles/clean/}{clean}
-%\subimport{parts/architectural-styles/vertical-slice/}{vertical-slice}
-%
-%% PART 2
-%\part{Architectural Patterns}
-%\subimport{parts/arch-patterns/mvvm/}{mvvm}
-%\subimport{parts/arch-patterns/cqrs/}{cqrs}
-%\subimport{parts/arch-patterns/repr/}{repr}
-%
-%% PART 5
-%\part{Software Testing}
-%\subimport{parts/testing/unit/}{unit}
-%\subimport{parts/testing/integration/}{integration}
 
-% --- Back Matter ---
 \backmatter
 \printbibliography
+
 \end{document}

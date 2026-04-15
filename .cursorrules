@@ -16,3 +16,14 @@
 - Use biblatex with biber for references.
 - Bibliography file is located at references.bib.
 - Use \autocite{} for citations.
+- Before each code snippet, include a \needspace{} to ensure the code snippet is not breaking across pages.
+- Ensure each code snippet is formatted correctly, to use the correct color theme, see example here:
+```
+\needspace{5\baselineskip}
+\begin{ridercode}{Java}
+public interface PlaceOrderPort {
+    OrderId placeOrder(PlaceOrderCommand command);
+}
+\end{ridercode}
+```
+- When referencing patterns or practices, use the \todo command to add a comment about references to be added later.

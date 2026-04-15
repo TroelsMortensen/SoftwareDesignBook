@@ -27,7 +27,7 @@ The hexagon is a visual metaphor, not a geometric requirement. Cockburn has said
 \section{Step 1: Start with Application Logic}
 \label{sec:hexagonal_step1}
 
-At the beginning, we model only application behavior, for example in \texttt{PlaceOrderService} or \texttt{TransferFundsUseCase}. At this stage we do not need to commit to \texttt{Spring}, \texttt{ASP.NET}, \texttt{PostgreSQL}, or a message broker. We intentionally start here because architecture decisions become clearer when behavior is visible first.
+At the beginning, we model only application behavior, for example in \texttt{PlaceOrderService} or \texttt{TransferFundsUseCase}. These classes will be responsible for the business logic of the application, i.e. actually executing a use case, with what that entails. At this stage we do not need to commit to \texttt{Spring}, \texttt{ASP.NET}, \texttt{PostgreSQL}, or a message broker. We intentionally start here because architecture decisions become clearer when behavior is visible first.
 
 For the rest of the chapter, we use one running Java example: \texttt{Order Placement}. This gives us one consistent slice from driving adapter to core behavior to driven adapters.
 
@@ -50,16 +50,27 @@ We deliberately delay technology choices. This gives us two benefits:
 \subsection{Java Skeleton of the Core}
 \label{sec:hexagonal_java_core_skeleton}
 
-The initial core can be expressed as a use-case-focused Java API and service implementation:
+The initial core can be expressed as a use-case-focused Java API and service implementation.
 
-\begin{lstlisting}[language=Java]
+First we need the "entry" interface, i.e. the port that will be used by the driving adapters to invoke the use case. It declares a piece of behaviour the core can execute.
+
+\needspace{5\baselineskip}
+\begin{ridercode}{Java}
 public interface PlaceOrderPort {
     OrderId placeOrder(PlaceOrderCommand command);
 }
+\end{ridercode}
 
+Next, we have the implementation of the port. It is a service class that implements the port interface and contains the business logic for the use case. Here, we just create a new \texttt{Order} and save it to the database, through the output port \texttt{SaveOrderPort}. This latter port/interface is implemented by a driven adapter, and accesses some storage, e.g. a database.
+
+There is also a second output port, \texttt{PublishOrderEventPort}, that is implemented by a driven adapter and publishes an event. This event is picked up, and we can react to it, e.g. send an email to the customer. We will probably need some kind of message broker, or event bus, but I leave these details for later.
+
+\needspace{16\baselineskip}
+\begin{ridercode}{Java}
 public final class PlaceOrderService implements PlaceOrderPort {
     private final SaveOrderPort saveOrderPort;
     private final PublishOrderEventPort publishOrderEventPort;
+    
     // Constructor omitted for brevity.
 
     @Override
@@ -70,13 +81,16 @@ public final class PlaceOrderService implements PlaceOrderPort {
         return order.id();
     }
 }
-\end{lstlisting}
+\end{ridercode}
 
 \section{Step 2: Add Driving Adapters and Input Ports}
 \label{sec:hexagonal_step2}
 
 Once the core behavior exists, we connect ways to invoke it. These are \textit{driving adapters} (also called primary adapters). Their responsibility is to translate external input into calls on input ports, which are interfaces representing use cases.
 
+Obviously, multiple driving adapters can be used to invoke the same use case. For example, we could have a REST controller, a CLI handler, and a GUI controller all invoking the same use case. This is why we need the input port, to abstract the use case from the driving adapter.
+
+\needspace{16\baselineskip}
 \begin{figure}[htbp]
     \centering
     \input{assets/hex_step3_driving_adapters}
@@ -101,11 +115,13 @@ Common driving adapters include:
 
 The driving adapter talks only to the input port and maps transport-specific models to use-case models:
 
-\begin{lstlisting}[language=Java]
+\needspace{16\baselineskip}
+\begin{ridercode}{Java}
 @RestController
 @RequestMapping("/orders")
 public class PlaceOrderController {
-    private final PlaceOrderPort placeOrderPort; // Dependency injected.
+    // Dependency injected.
+    private final PlaceOrderPort placeOrderPort; 
 
     @PostMapping
     public ResponseEntity<String> place(@RequestBody OrderRequest request) {
@@ -115,12 +131,12 @@ public class PlaceOrderController {
         return ResponseEntity.accepted().body(orderId.value());
     }
 }
-\end{lstlisting}
+\end{ridercode}
 
 \section{Step 3: Add Driven Adapters and Output Ports}
 \label{sec:hexagonal_step3}
 
-The core eventually needs support from external capabilities such as storage, notifications, or third-party APIs. We model these needs as output ports, and implement those ports with \textit{driven adapters} (secondary adapters). This is where dependency inversion becomes concrete: the core depends on interfaces, while infrastructure depends on those same interfaces.\autocite{fowler2002patterns}
+The core eventually needs support from external capabilities such as storage, notifications, or third-party APIs. We model these needs as output ports, and implement those ports with \textit{driven adapters} (secondary adapters). This is where dependency inversion becomes concrete: the core depends on interfaces (and \textit{owns} those interfaces), while infrastructure depends on those same interfaces.\autocite{fowler2002patterns}
 
 \begin{figure}[htbp]
     \centering
@@ -136,24 +152,37 @@ Typical driven adapters are:
 \begin{itemize}
     \item a repository adapter for \texttt{PostgreSQL} or \texttt{MongoDB},
     \item an email adapter for \texttt{SMTP},
-    \item a payment adapter for an external PSP API,
-    \item and a publisher adapter for a message broker.
+    \item a payment adapter for an external payment service API, like Stripe or PayPal,
+    \item and a publisher adapter for a message broker, like Kafka or RabbitMQ.
 \end{itemize}
 
 \subsection{Output Ports and a Driven Adapter in Java}
 \label{sec:hexagonal_java_driven_adapter}
 
-On the driven side, the core defines output ports, and infrastructure implements them:
+On the driven side, the core defines output ports, and infrastructure implements them.
 
-\begin{lstlisting}[language=Java]
+Let's start with the first output port, \texttt{LoadOrderPort}. It is used to load an order from the database. I use here the \texttt{Optional} \todo{add reference, when Optional pattern is written} pattern to indicate that the order may not be found.
+
+\needspace{4\baselineskip}
+\begin{ridercode}{Java}
 public interface LoadOrderPort {
     Optional<Order> loadById(OrderId orderId);
 }
+\end{ridercode}
 
+And then next port to save an order to the database. You may want to combine the two interfaces into one, with two methods. This is very common, but for this example, we will keep them separate.
+
+\needspace{4\baselineskip}
+\begin{ridercode}{Java}
 public interface SaveOrderPort {
     void save(Order order);
 }
+\end{ridercode}
 
+And then an implementation of the latter port. Here we use the \texttt{Spring Data JPA} library to save the order to the database. You could also use raw SQL, or a ORM like Hibernate.
+
+\needspace{8\baselineskip}
+\begin{ridercode}{Java}
 public final class JpaOrderRepositoryAdapter implements SaveOrderPort {
     private final SpringDataOrderRepository repository; // Dependency injected.
 
@@ -162,22 +191,32 @@ public final class JpaOrderRepositoryAdapter implements SaveOrderPort {
         repository.save(OrderEntity.fromDomain(order));
     }
 }
-\end{lstlisting}
+\end{ridercode}
+
+The purpose of this adapter is to hide the database implementation details from the core.
 
 \subsection{Mapping Boundaries in Java}
 \label{sec:hexagonal_java_mapping_boundaries}
 
-Mapping code belongs in adapters, because adapters translate between outside models and core models:
+Mapping code belongs in adapters, because adapters translate between outside models and core models. For simplicity, I use here record classes to represent the commands and requests.
 
-\begin{lstlisting}[language=Java]
-public record OrderRequest(String customerId, List<OrderLineRequest> lines) {}
-public record PlaceOrderCommand(String customerId, List<OrderLine> lines) {}
+\needspace{8\baselineskip}
+\begin{ridercode}{Java}
+public record OrderRequest( String customerId, 
+                            List<OrderLineRequest> lines) {}
 
-PlaceOrderCommand command =
-        new PlaceOrderCommand(request.customerId(), lineMapper.toDomain(request.lines()));
-\end{lstlisting}
+public record PlaceOrderCommand(String customerId, 
+                                List<OrderLine> lines) {}
 
-\begin{lstlisting}[language=Java]
+PlaceOrderCommand command = 
+                    new PlaceOrderCommand(
+                        request.customerId(), 
+                        lineMapper.toDomain(request.lines())
+                    );
+\end{ridercode}
+
+\needspace{13\baselineskip}
+\begin{ridercode}{Java}
 @Entity
 public class OrderEntity {
     @Id
@@ -189,12 +228,14 @@ public class OrderEntity {
         return entity;
     }
 }
-\end{lstlisting}
+\end{ridercode}
 
 \subsection{Recommended Java Package Layout}
 \label{sec:hexagonal_package_layout}
 
 A package convention gives us a practical guardrail. We recommend organizing the module by architectural role so that core code remains stable while adapters can change:
+
+\todo{really not what I had in mind, provide AI with example}
 
 \begin{figure}[htbp]
     \centering
@@ -204,7 +245,8 @@ A package convention gives us a practical guardrail. We recommend organizing the
 \end{figure}
 
 A typical package layout for the running example is:
-\begin{lstlisting}[language=Java]
+\needspace{13\baselineskip}
+\begin{ridercode}{Java}
 com.example.orders
   domain
   application
@@ -216,7 +258,7 @@ com.example.orders
     out.persistence
     out.events
   config
-\end{lstlisting}
+\end{ridercode}
 
 \subsection{Dependency Rules}
 \label{sec:hexagonal_dependency_rules}
@@ -295,7 +337,8 @@ This is not exclusive to hexagonal architecture. A disciplined layered architect
 
 In Java, we can keep most behavior tests focused on the core and use only a few infrastructure tests:
 
-\begin{lstlisting}[language=Java]
+\needspace{15\baselineskip}
+\begin{ridercode}{Java}
 class PlaceOrderServiceTest {
     @Test
     void placesOrderAndPublishesEvent() {
@@ -309,9 +352,10 @@ class PlaceOrderServiceTest {
         assertTrue(publish.publishedOrderIds().contains(id));
     }
 }
-\end{lstlisting}
+\end{ridercode}
 
-\begin{lstlisting}[language=Java]
+\needspace{14\baselineskip}
+\begin{ridercode}{Java}
 @DataJpaTest
 class JpaOrderRepositoryAdapterTest {
     @Autowired
@@ -324,7 +368,7 @@ class JpaOrderRepositoryAdapterTest {
         assertEquals(1, repository.count());
     }
 }
-\end{lstlisting}
+\end{ridercode}
 
 \section{Practical Trade-offs}
 \label{sec:hexagonal_tradeoffs}
