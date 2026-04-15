@@ -1,0 +1,18 @@
+- I am writing a technical book in LaTeX. When generating content:
+- Use \section and \subsection for hierarchy.
+- Use the listings package for code blocks.
+- Always include \label{} for sections and figures so I can cross-reference them.
+- Every \chapter, \section, and \figure must have a \label{} using the format type:name (e.g., sec:observer_pattern).
+- If I ask for a diagram, use TikZ or PlantUML syntax.
+- Prefer \include{} for chapters and \input{} for smaller fragments or TikZ files.
+- Always ensure new chapters are added to the main.tex file structure.
+- Use \texttt{} for class names, method names, and file paths mentioned in prose.
+- Use the listings (or minted) environment for code blocks. Always specify the language (e.g., [language=Java]).
+- Maintain a professional, pedagogical tone. Use 'we' to guide the reader through examples.
+- If a diagram is needed, default to PlantUML for logic and TikZ for high-precision architectural layouts.
+- Reference the custom styles defined in preamble.sty (e.g., arch_box, flow_arrow) rather than defining colors inline.
+- Only use standard packages like amsmath, graphicx, hyperref, and cleveref. If you need a new package, ask me to add it to the preamble first.
+- Remember to escape special characters like _ or & when they appear in technical text (e.g., user\_id)
+- Use biblatex with biber for references.
+- Bibliography file is located at references.bib.
+- Use \autocite{} for citations.
