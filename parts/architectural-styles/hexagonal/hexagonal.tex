@@ -27,9 +27,11 @@ The hexagon is a visual metaphor, not a geometric requirement. Cockburn has said
 \section{Step 1: Start with Application Logic}
 \label{sec:hexagonal_step1}
 
-At the beginning, we model only application behavior, for example in \texttt{PlaceOrderService} or \texttt{TransferFundsUseCase}. These classes will be responsible for the business logic of the application, i.e. actually executing a use case, with what that entails. At this stage we do not need to commit to \texttt{Spring}, \texttt{ASP.NET}, \texttt{PostgreSQL}, or a message broker. We intentionally start here because architecture decisions become clearer when behavior is visible first.
+At the beginning, we model only application behavior, for example in \texttt{ConfirmKaijuDetectionService} or \texttt{TrackKaijuUseCase}. These classes are responsible for business logic, i.e. executing a use case and enforcing its rules. Commonly such a class is suffixed "Service", or "UseCase", or "Handler". 
 
-For the rest of the chapter, we use one running Java example: \texttt{Order Placement}. This gives us one consistent slice from driving adapter to core behavior to driven adapters.
+At this stage we do not need to commit to \texttt{Spring}, \texttt{ASP.NET}, \texttt{PostgreSQL}, or a message broker. We intentionally start here because architecture decisions become clearer when behavior is visible first.
+
+For the rest of the chapter, we use one running Java example: \texttt{Confirm First Kaiju Detection}. This gives us one consistent slice from driving adapter to core behavior to driven adapters.
 
 \begin{figure}[htbp]
     \centering
@@ -37,6 +39,19 @@ For the rest of the chapter, we use one running Java example: \texttt{Order Plac
     \caption{Initial core structure focused on use cases and policies.}
     \label{fig:hexagonal_core_structure}
 \end{figure}
+
+The content of the application core has several names. Often, classes in here are called "application services" or "use cases". And are therefore suffixes with "Service" or "UseCase". The responsibility of these classes is to execute a use case and enforce its rules. For example, \texttt{ConfirmKaijuDetectionService} is a service that confirms a Kaiju detection. The class will then expose a method for this particular use case, and implement the logic for it.
+
+Logic include many things:
+
+\begin{itemize}
+    \item Validating input data,
+    \item Applying business rules,
+    \item Coordinating across output ports,
+    \item and persisting the results.
+\end{itemize}
+
+As such, the application core is the heart of the application, and over time, it will grow to contain the majority of the application's logic, placed in these service classes.
 
 \subsection{What We Delay on Purpose}
 \label{sec:hexagonal_delay_decisions}
@@ -56,29 +71,34 @@ First we need the "entry" interface, i.e. the port that will be used by the driv
 
 \needspace{5\baselineskip}
 \begin{ridercode}{Java}
-public interface PlaceOrderPort {
-    OrderId placeOrder(PlaceOrderCommand command);
+public interface ConfirmKaijuDetectionPort {
+    KaijuId confirmDetection(ConfirmKaijuDetectionCommand command);
 }
 \end{ridercode}
 
-Next, we have the implementation of the port. It is a service class that implements the port interface and contains the business logic for the use case. Here, we just create a new \texttt{Order} and save it to the database, through the output port \texttt{SaveOrderPort}. This latter port/interface is implemented by a driven adapter, and accesses some storage, e.g. a database.
+Next, we have the implementation of the port. It is a service class that implements the interface and contains the use-case logic. Here, we confirm a detection by linking a new \texttt{Kaiju} to its origin \texttt{Breach} and persisting it through \texttt{SaveKaijuPort}.
 
-There is also a second output port, \texttt{PublishOrderEventPort}, that is implemented by a driven adapter and publishes an event. This event is picked up, and we can react to it, e.g. send an email to the customer. We will probably need some kind of message broker, or event bus, but I leave these details for later.
+There is also a second output port, \texttt{PublishKaijuConfirmedPort}, implemented by a driven adapter that publishes a mission event. It is similar to the Observer Design Pattern\todoinref{add reference to Observer Pattern}. This event can trigger downstream actions such as command alerts or tracking workflows.
 
 \needspace{16\baselineskip}
 \begin{ridercode}{Java}
-public final class PlaceOrderService implements PlaceOrderPort {
-    private final SaveOrderPort saveOrderPort;
-    private final PublishOrderEventPort publishOrderEventPort;
+public final class ConfirmKaijuDetectionService implements ConfirmKaijuDetectionPort {
+    private final LoadBreachPort loadBreachPort;
+    private final SaveKaijuPort saveKaijuPort;
+    private final PublishKaijuConfirmedPort publishKaijuConfirmedPort;
     
     // Constructor omitted for brevity.
 
     @Override
-    public OrderId placeOrder(PlaceOrderCommand command) {
-        Order order = Order.place(command.customerId(), command.lines());
-        saveOrderPort.save(order);
-        publishOrderEventPort.publishPlaced(order.id());
-        return order.id();
+    public KaijuId confirmDetection(ConfirmKaijuDetectionCommand command) {
+        Optional<Breach> breach = loadBreachPort
+                .loadById(command.originBreachId())
+                .orThrow();
+
+        Kaiju kaiju = Kaiju.confirmed(command.codename(), command.classification(), breach.id());
+        saveKaijuPort.save(kaiju);
+        publishKaijuConfirmedPort.publishConfirmed(kaiju.id(), breach.id());
+        return kaiju.id();
     }
 }
 \end{ridercode}
@@ -88,7 +108,7 @@ public final class PlaceOrderService implements PlaceOrderPort {
 
 Once the core behavior exists, we connect ways to invoke it. These are \textit{driving adapters} (also called primary adapters). Their responsibility is to translate external input into calls on input ports, which are interfaces representing use cases.
 
-Obviously, multiple driving adapters can be used to invoke the same use case. For example, we could have a REST controller, a CLI handler, and a GUI controller all invoking the same use case. This is why we need the input port, to abstract the use case from the driving adapter.
+Obviously, multiple driving adapters can be used to invoke the same use case. For example, we could have a REST controller, a CLI handler, and a GUI controller all invoking the same use case. This is why we need the input port, to abstract the use case from the driving adapter. In the below diagram I have kept it simple and reduced the number of arrows from driving adapters to input ports.
 
 \needspace{16\baselineskip}
 \begin{figure}[htbp]
@@ -96,6 +116,16 @@ Obviously, multiple driving adapters can be used to invoke the same use case. Fo
     \input{assets/hex_step3_driving_adapters}
     \caption{Driving adapters call input ports to invoke application behavior.}
     \label{fig:hexagonal_driving_adapters}
+\end{figure}
+
+We can simplify the diagram a bit, by just adding a new hexagonal layer to the left side to represent the driving adapters:
+
+\needspace{16\baselineskip}
+\begin{figure}[htbp]
+    \centering
+    \input{assets/hex_step3_5_driving_adapters}
+    \caption{Driving adapters to the left of the application core.}
+    \label{fig:hexagonal_driving_adapters_simplified}
 \end{figure}
 
 \subsection{Examples of Driving Adapters}
@@ -118,17 +148,20 @@ The driving adapter talks only to the input port and maps transport-specific mod
 \needspace{16\baselineskip}
 \begin{ridercode}{Java}
 @RestController
-@RequestMapping("/orders")
-public class PlaceOrderController {
+@RequestMapping("/kaiju-detections")
+public class KaijuController {
     // Dependency injected.
-    private final PlaceOrderPort placeOrderPort; 
+    private final ConfirmKaijuDetectionPort confirmKaijuDetectionPort;
 
     @PostMapping
-    public ResponseEntity<String> place(@RequestBody OrderRequest request) {
-        PlaceOrderCommand command =
-                new PlaceOrderCommand(request.customerId(), request.lines());
-        OrderId orderId = placeOrderPort.placeOrder(command);
-        return ResponseEntity.accepted().body(orderId.value());
+    public ResponseEntity<String> confirm(@RequestBody KaijuDetectionRequest request) {
+        ConfirmKaijuDetectionCommand command =
+                new ConfirmKaijuDetectionCommand(
+                        request.codename(),
+                        request.classification(),
+                        request.originBreachId());
+        KaijuId kaijuId = confirmKaijuDetectionPort.confirmDetection(command);
+        return ResponseEntity.accepted().body(kaijuId.value());
     }
 }
 \end{ridercode}
@@ -144,6 +177,28 @@ The core eventually needs support from external capabilities such as storage, no
     \caption{Driven adapters implement output ports for infrastructure concerns.}
     \label{fig:hexagonal_driven_adapters}
 \end{figure}
+
+Again, we can simplify the diagram a bit, by just adding a new hexagonal layer to the right side to represent the driven adapters:
+
+\needspace{16\baselineskip}
+\begin{figure}[htbp]
+    \centering
+    \input{assets/hex_step4_5_both_sides}
+    \caption{Driven adapters to the right of the application core.}
+    \label{fig:hexagonal_driven_adapters_simplified}
+\end{figure}
+
+And, again, we can update the diagram to include a thin hexagon around the core to represent the ports of the core. Just to clarify that there is a "border" between the core and the adapters, on both sides.
+
+\needspace{16\baselineskip}
+\begin{figure}[htbp]
+    \centering
+    \input{assets/hex_both_sides_simplified}
+    \caption{Both sides of the hexagon, with the core in the middle.}
+    \label{fig:hexagonal_both_sides_simplified}
+\end{figure}
+
+Notice how the inner hex is dashed, to indicate a "border" between the core and its ports, but to still indicate that the ports are \textit{inside} the core.
 
 \subsection{Examples of Driven Adapters}
 \label{sec:hexagonal_driven_examples}
@@ -161,34 +216,35 @@ Typical driven adapters are:
 
 On the driven side, the core defines output ports, and infrastructure implements them.
 
-Let's start with the first output port, \texttt{LoadOrderPort}. It is used to load an order from the database. I use here the \texttt{Optional} \todo{add reference, when Optional pattern is written} pattern to indicate that the order may not be found.
+Let's start with the first output port, \texttt{LoadBreachPort}. It is used to load a Breach from storage. I use \texttt{Optional} \todoinref{add reference, when Optional pattern is written} to indicate that the Breach may not be found.
 
 \needspace{4\baselineskip}
 \begin{ridercode}{Java}
-public interface LoadOrderPort {
-    Optional<Order> loadById(OrderId orderId);
+public interface LoadBreachPort {
+    Optional<Breach> loadById(BreachId breachId);
 }
 \end{ridercode}
 
-And then next port to save an order to the database. You may want to combine the two interfaces into one, with two methods. This is very common, but for this example, we will keep them separate.
+Then the next port to save a Kaiju entity to the storage (database or other storage). I keep the interfaces small here. But sometimes you may want to group multiple related operations into a single interface. For example, you could have an interface which contains both the save and load operations. 
 
 \needspace{4\baselineskip}
 \begin{ridercode}{Java}
-public interface SaveOrderPort {
-    void save(Order order);
+public interface SaveKaijuPort {
+    void save(Kaiju kaiju);
 }
 \end{ridercode}
 
-And then an implementation of the latter port. Here we use the \texttt{Spring Data JPA} library to save the order to the database. You could also use raw SQL, or a ORM like Hibernate.
+And an implementation of the latter port. Here we use \texttt{Spring Data JPA} to save the Kaiju to storage. If you are unfamiliar with \texttt{Spring Data JPA}, you can think of it as a library that provides a way to interact with a database, without explicitly writing SQL queries.
 
 \needspace{8\baselineskip}
 \begin{ridercode}{Java}
-public final class JpaOrderRepositoryAdapter implements SaveOrderPort {
-    private final SpringDataOrderRepository repository; // Dependency injected.
+public final class JpaKaijuRepositoryAdapter implements SaveKaijuPort {
+    // Dependency injected.    
+    private final SpringDataKaijuRepository repository; 
 
     @Override
-    public void save(Order order) {
-        repository.save(OrderEntity.fromDomain(order));
+    public void save(Kaiju kaiju) {
+        repository.save(KaijuEntity.fromDomain(kaiju));
     }
 }
 \end{ridercode}
@@ -202,29 +258,33 @@ Mapping code belongs in adapters, because adapters translate between outside mod
 
 \needspace{8\baselineskip}
 \begin{ridercode}{Java}
-public record OrderRequest( String customerId, 
-                            List<OrderLineRequest> lines) {}
+public record KaijuDetectionRequest(String codename,
+                                    KaijuClassification classification,
+                                    BreachId originBreachId) {}
 
-public record PlaceOrderCommand(String customerId, 
-                                List<OrderLine> lines) {}
+public record ConfirmKaijuDetectionCommand(String codename,
+                                           KaijuClassification classification,
+                                           BreachId originBreachId) {}
 
-PlaceOrderCommand command = 
-                    new PlaceOrderCommand(
-                        request.customerId(), 
-                        lineMapper.toDomain(request.lines())
-                    );
+ConfirmKaijuDetectionCommand command =
+        new ConfirmKaijuDetectionCommand(
+                request.codename(),
+                request.classification(),
+                request.originBreachId());
 \end{ridercode}
 
 \needspace{13\baselineskip}
 \begin{ridercode}{Java}
 @Entity
-public class OrderEntity {
+public class KaijuEntity {
     @Id
     private String id;
+    private String codename;
 
-    public static OrderEntity fromDomain(Order order) {
-        OrderEntity entity = new OrderEntity();
-        entity.id = order.id().value();
+    public static KaijuEntity fromDomain(Kaiju kaiju) {
+        KaijuEntity entity = new KaijuEntity();
+        entity.id = kaiju.id().value();
+        entity.codename = kaiju.codename();
         return entity;
     }
 }
@@ -235,7 +295,7 @@ public class OrderEntity {
 
 A package convention gives us a practical guardrail. We recommend organizing the module by architectural role so that core code remains stable while adapters can change:
 
-\todo{really not what I had in mind, provide AI with example}
+\tododiagram{really not what I had in mind, provide AI with example}
 
 \begin{figure}[htbp]
     \centering
@@ -244,10 +304,10 @@ A package convention gives us a practical guardrail. We recommend organizing the
     \label{fig:hexagonal_package_layout}
 \end{figure}
 
-A typical package layout for the running example is:
+A typical \tododiagram{Update this to show better package ascii art} package layout for the running example is:
 \needspace{13\baselineskip}
 \begin{ridercode}{Java}
-com.example.orders
+com.abyssalwatch.kaiju
   domain
   application
     port.in
@@ -263,34 +323,37 @@ com.example.orders
 \subsection{Dependency Rules}
 \label{sec:hexagonal_dependency_rules}
 
+We must remember the dependency rules of this architecture
+\begin{itemize}
+    \item The core should not depend on the adapters.
+    \item The core defines the ports (interfaces) that the adapters must implement.
+    \item The adapters should depend on the core.
+    \item The adapters should not depend on each other.
+\end{itemize}
+
+This means that dependencies should only go from the outside towards to core. \tododiagram{add diagram showing the direction of dependencies. Inner hex and outer hex divided vertically into two parts, with the core in the middle.}
+When we then organize the code into packages or modules, we apply these dependency rules by being careful about which packages a class can import.
+
 With this layout, we keep dependency directions explicit:
 \begin{itemize}
     \item \texttt{domain} and \texttt{application} do not depend on \texttt{adapters}.
-    \item \texttt{adapters.in.*} depend on input ports in \texttt{application.port.in}.
-    \item \texttt{application} depends on output ports in \texttt{application.port.out}.
-    \item \texttt{adapters.out.*} implement output ports and may depend on framework libraries.
+    \item \texttt{adapters.in.*} depend on input ports in \texttt{application.port.in} (i.e. the interfaces providing access to the core). Classes in this package are our driving adapters.
+    \item \texttt{application} depends on output ports in \texttt{application.port.out} (i.e. the interfaces that the core defines, to be implemented by the adapters).
+    \item \texttt{adapters.out.*} implement output ports and may depend on framework libraries. Classes in this package are our driven adapters.
     \item \texttt{config} performs wiring and can see both core and adapters.
 \end{itemize}
 
-\subsection{How to Enforce the Rules}
-\label{sec:hexagonal_enforce_rules}
-
-We can enforce these conventions in daily work by combining three practices:
-\begin{itemize}
-    \item package naming rules in code reviews,
-    \item architecture tests that forbid disallowed imports,
-    \item and a checklist in pull requests for boundary crossings.
-\end{itemize}
 
 \subsection{Requires vs Provides Contracts}
 \label{sec:hexagonal_requires_vs_provides}
 
-The most important design choice on the driven side is contract ownership. In hexagonal architecture, the core defines contracts by what the use cases \textit{require}. For example, a core service may depend on \texttt{LoadOrderPort} and \texttt{SaveOrderPort}, because those capabilities are needed to complete the use case.
+The most important design choice on the driven side is contract ownership. This is where the hexagonal architecture differs from layered architecture. In hexagonal architecture, the core defines contracts by what the use cases \textit{require}. For example, a core service may depend on \texttt{LoadBreachPort} and \texttt{SaveKaijuPort}, because those capabilities are needed to complete the use case and preserve the Kaiju-origin invariant.
 
 In many layered implementations, interfaces are shaped by what the persistence layer \textit{provides}, for example a repository abstraction aligned to ORM operations. That approach can still be effective, and we can still mock those interfaces. The difference is who drives the abstraction: in hexagonal architecture, required core behavior drives the port definition; in provider-oriented layering, available infrastructure capabilities often drive the interface definition.
 
 This distinction matters during development. With core-owned output ports, we can implement and test use cases before deciding the final database, broker, or external API integration.
 
+\tododiagram{I don't like this diagram}
 \begin{figure}[htbp]
     \centering
     \input{assets/hex_step6_requires_vs_provides}
@@ -301,19 +364,34 @@ This distinction matters during development. With core-owned output ports, we ca
 \section{Step 4: Evolving the Core with a Domain Model}
 \label{sec:hexagonal_step4}
 
-In some projects, the first hexagonal version uses lightweight application services and simple data structures. That is a valid starting point. As rules become richer, we often add an explicit domain model to keep invariants and behavior close to business concepts.
+In some projects, the first hexagonal version uses lightweight application services and simple data structures. That is a valid starting point. As rules become richer, we often add an explicit Domain Model to keep invariants and behavior close to business concepts.
 
-\begin{figure}[htbp]
-    \centering
-    \input{assets/hex_step5_domain_evolution}
-    \caption{Evolution of the inner hexagon from use-case-only logic to use cases plus domain model.}
-    \label{fig:hexagonal_domain_evolution}
-\end{figure}
+
 
 \subsection{Why the Domain Model May Come Later}
 \label{sec:hexagonal_domain_later}
 
+In the original hexagonal architecture, there was no domain model. You \textit{can} write software without a domain model of classes and objects. 
+
+About the same time as hexagonal architecture was introduced, the Domain-Driven Design (DDD) paradigm was introduced by Eric Evans \autocite{evans2003ddd}. And so, shortly after, the original hexagonal architecture diagram was extended with a domain model.
+
 Adding a domain model later is not a failure of architecture; it is often a sign of responsible evolution. We first establish boundaries and interaction patterns, then deepen the model when complexity justifies it.
+
+We can illustrate the addition of the Domain Model by introducing a new hexagon, inside the core. This now means that the Service classes, Application Core, can act upon the Domain Model, and that the Domain Model has no dependencies on any outer hexagon.
+
+He is the updated diagram:
+
+\needspace{16\baselineskip}
+\begin{figure}[htbp]
+    \centering
+    \resizebox{0.6\textwidth}{!}{%  % Adjust 0.8 to 1.0 for full width
+        \input{assets/hex_with_domain}
+    }
+    \caption{The domain model inside the core.}
+    \label{fig:hexagonal_with_domain}
+\end{figure}
+
+For the sake of clarity, I have added a nice arrow to indicate that the dependencies point inward. Outer hexes may depend on inner hexes, e.g. by importing classes from the inner hex (package/module).
 
 \section{Testing Across the Hexagon Boundary}
 \label{sec:hexagonal_testing}
@@ -325,62 +403,66 @@ The separation of concerns gives us a practical testing strategy:\autocite{huttu
     \item and keep end-to-end tests for wiring and critical user paths.
 \end{itemize}
 
+In short, we can focus on unit testing the behaviour of the core, by mocking \todoinref{add reference to mocking} the driven adapters.
+
 \subsection{Why Ports Improve Testability}
 \label{sec:hexagonal_why_ports_testability}
 
-Ports improve testability because they create explicit seams around behavior. An input port gives us a stable way to invoke a use case, while output ports let us replace infrastructure with in-memory test doubles. In practice, we execute a use case through an input port and provide fake implementations such as \texttt{LoadOrderPort} or \texttt{PublishOrderEventPort}. This keeps most tests fast and deterministic, because they verify business rules without requiring a running database, broker, or HTTP stack.
+Ports improve testability because they create explicit seams \todoinref{add reference to seams} around behavior. An input port gives us a stable way to invoke a use case, while output ports let us replace infrastructure with in-memory test doubles \todoinref{add reference to test doubles}. 
+In practice, we execute a use case through an input port and provide fake implementations such as \texttt{LoadBreachPort} or \texttt{PublishKaijuConfirmedPort}. This keeps most tests fast and deterministic, because they verify business rules without requiring a running database, broker, or HTTP stack.
 
 This is not exclusive to hexagonal architecture. A disciplined layered architecture can also isolate dependencies behind interfaces and achieve good tests. The practical difference is that hexagonal architecture makes these seams a first-class design element around the core, so isolated tests become the default rather than an optional refactoring.
 
 \subsection{Testing Slices with Java}
 \label{sec:hexagonal_java_testing_slices}
 
-In Java, we can keep most behavior tests focused on the core and use only a few infrastructure tests:
+In Java, we can keep most behavior tests focused on the core. Here is an example of testing a use case defined in a service class. We use a fake implementation of the repository and the event publisher. Both fakes implement the the necessary interface.
 
-\needspace{15\baselineskip}
+\needspace{30\baselineskip}
 \begin{ridercode}{Java}
-class PlaceOrderServiceTest {
-    @Test
-    void placesOrderAndPublishesEvent() {
-        FakeSaveOrderPort save = new FakeSaveOrderPort();
-        FakePublishOrderEventPort publish = new FakePublishOrderEventPort();
-        PlaceOrderService service = new PlaceOrderService(save, publish);
+@Test
+void confirmsDetectionAndPublishesEvent() {
+    FakeLoadBreachPort loadPort = new FakeLoadBreachPort();
+    FakeSaveKaijuPort savePort = new FakeSaveKaijuPort();
+    FakePublishKaijuConfirmedPort publishPort = 
+                        new FakePublishKaijuConfirmedPort();
 
-        OrderId id = service.placeOrder(new PlaceOrderCommand("c-42", List.of()));
+    ConfirmKaijuDetectionService service = 
+                    new ConfirmKaijuDetectionService(
+                        loadPort,
+                        savePort,
+                        publishPort
+                    );
 
-        assertTrue(save.savedOrderIds().contains(id));
-        assertTrue(publish.publishedOrderIds().contains(id));
-    }
+    ConfirmKaijuDetectionCommand command = 
+                    new ConfirmKaijuDetectionCommand(
+                        "Leatherback",
+                        KaijuClassification.CATEGORY_III,
+                        new BreachId("B-01")
+                    );
+            
+    KaijuId id = service.confirmDetection(command);
+
+    assertTrue(savePort.savedKaijuIds().contains(id));
+
+    assertTrue(publishPort
+                .publishedKaijuIds()
+                .contains(command.originBreachId().value())
+                );
 }
 \end{ridercode}
 
-\needspace{14\baselineskip}
-\begin{ridercode}{Java}
-@DataJpaTest
-class JpaOrderRepositoryAdapterTest {
-    @Autowired
-    SpringDataOrderRepository repository;
-
-    @Test
-    void persistsMappedOrderEntity() {
-        JpaOrderRepositoryAdapter adapter = new JpaOrderRepositoryAdapter(repository);
-        adapter.save(Order.place(new CustomerId("c-42"), List.of()));
-        assertEquals(1, repository.count());
-    }
-}
-\end{ridercode}
 
 \section{Practical Trade-offs}
 \label{sec:hexagonal_tradeoffs}
 
-Hexagonal architecture improves replaceability and testability, but it introduces explicit interfaces and mapping code. For small CRUD-heavy systems, that can feel heavy. For systems with changing workflows, multiple interfaces, or expensive integration points, the added structure usually pays for itself over time.
+Hexagonal architecture improves replaceability of the adapters and testability, but it introduces explicit interfaces and mapping code. For small CRUD-heavy systems, that can feel heavy. For systems with changing workflows, multiple interfaces, or expensive integration points, the added structure usually pays for itself over time.
 
 \subsection{Hexagonal and Layered: A Preview}
 \label{sec:hexagonal_layered_preview}
 
 Hexagonal and layered architecture are not enemies; both can be implemented well or poorly. A layered design with clear interfaces and dependency inversion can achieve strong testability. The practical difference we emphasize is orientation: hexagonal architecture centers on inside/outside boundaries and core-owned required ports, while layered architecture commonly centers on presentation, application, and persistence layers.
 
-In the upcoming layered chapter, we will compare these styles directly and show where they overlap, where they differ, and when each framing is likely to be the better fit.
 
 \subsection{When Migration Is Worth It}
 \label{sec:hexagonal_migration_when}
@@ -392,7 +474,7 @@ Migration from layered to hexagonal is most useful when integration change is fr
 
 We can migrate incrementally instead of rewriting everything:
 \begin{enumerate}
-    \item select one high-value use case (for example \texttt{PlaceOrder}),
+    \item select one high-value use case (for example \texttt{ConfirmKaijuDetection}),
     \item define an input port and required output ports for that use case,
     \item move business logic into an application service behind the input port,
     \item wrap current repository or API integrations as driven adapters,
@@ -400,10 +482,7 @@ We can migrate incrementally instead of rewriting everything:
     \item then repeat use case by use case.
 \end{enumerate}
 
-\subsection{Migration Risks and Mitigations}
-\label{sec:hexagonal_migration_risks}
-
-During transition, we often see duplicate models and mixed conventions. We reduce this risk by assigning explicit ownership per use case, tracking migration in small milestones, and refusing partial boundary rewrites that leave unclear dependencies.
+What we essentially do here is create a port owned by the core, and then implement it with a driven adapter.
 
 \subsection{Common Implementation Mistakes}
 \label{sec:hexagonal_common_mistakes}
