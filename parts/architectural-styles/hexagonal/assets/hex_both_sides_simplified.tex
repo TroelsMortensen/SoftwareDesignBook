@@ -1,0 +1,37 @@
+\begin{tikzpicture}[
+    % Core style
+    core/.style={regular polygon, regular polygon sides=6, shape border rotate=30, draw=blue!70, fill=blue!8, dashed, minimum size=4.5cm, align=center},
+    % Ports Layer
+    ports_layer/.style={regular polygon, regular polygon sides=6, shape border rotate=30, draw=blue!70, fill=blue!8, very thick, minimum size=5.75cm},
+    % Port nodes
+    port/.style={circle, draw=black!70, fill=white, minimum size=0.45cm, inner sep=0pt, font=\tiny},
+    lbl/.style={font=\scriptsize, align=center},
+    % Boundaries
+    driving_bg/.style={draw=blue!90, solid, very thick, fill=teal!30},
+    driven_bg/.style={draw=blue!90, solid, very thick, fill=teal!30}
+]
+    % 1. Reference Outer Hexagon (8cm)
+    \node[regular polygon, regular polygon sides=6, shape border rotate=30, minimum size=8cm] (outer) at (0,0) {};
+    
+    % 2. Drawing the Two Boundary Halves
+    \draw[driving_bg] (outer.90) -- (outer.150) -- (outer.210) -- (outer.270) -- cycle;
+    \draw[driven_bg] (outer.90) -- (outer.30) -- (outer.330) -- (outer.270) -- cycle;
+
+    % 3. The Middle Ports Layer
+    \node[ports_layer] (layer) at (0,0) {};
+    
+    % --- NEW: Vertical line through the Ports Hexagon ---
+    \draw[blue!40, very thick] (layer.90) -- (layer.270);
+
+    % 4. The Application Core
+    \node[core] (core) {Application\\Core};
+
+    % Labels
+    \node[lbl, rotate=90] at (-2.2, 0.0) {Input Ports};
+    \node[lbl, rotate=-90] at (2.2, 0.0) {Output Ports};
+    
+    % Boundary Labels
+    \node[lbl, rotate=90, font=\large\bfseries] at (-3.0, 0.0) {Driving Adapters};
+    \node[lbl, rotate=-90, font=\large\bfseries] at (3.0, 0.0) {Driven Adapters};
+
+\end{tikzpicture}

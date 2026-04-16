@@ -1,0 +1,43 @@
+\begin{tikzpicture}[
+    core/.style={regular polygon, regular polygon sides=6, shape border rotate=30, draw=blue!70, fill=blue!8, very thick, minimum size=5.5cm, align=center},
+    port/.style={circle, draw=black!70, fill=white, minimum size=0.45cm, inner sep=0pt, font=\tiny},
+    lbl/.style={font=\scriptsize, align=center},
+    % Boundaries
+    driving_bg/.style={draw=blue!90, solid, very thick, fill=teal!30},
+    driven_bg/.style={draw=blue!90, solid, very thick, fill=teal!30} % Different color to distinguish
+]
+    % 1. Reference Outer Hexagon (Invisible)
+    \node[regular polygon, regular polygon sides=6, shape border rotate=30, minimum size=8cm] (outer) at (0,0) {};
+    
+    % 2. Drawing the Two Halves
+    % Left Half (Driving)
+    \draw[driving_bg] (outer.90) -- (outer.150) -- (outer.210) -- (outer.270) -- cycle;
+    % Right Half (Driven)
+    \draw[driven_bg] (outer.90) -- (outer.30) -- (outer.330) -- (outer.270) -- cycle;
+
+    % 3. The Application Core
+    \node[core] (core) {Application\\Core};
+
+    % 4. Driving Ports (Left)
+    \node[port] (lp1) at (core.120) {};
+    \node[port] (lp2) at (core.150) {};
+    \node[port] (lp3) at (core.180) {};
+    \node[port] (lp4) at (core.210) {};
+    \node[port] (lp5) at (core.240) {};
+    
+    % 5. Driven Ports (Right)
+    \node[port] (rp1) at (core.60) {};
+    \node[port] (rp2) at (core.30) {};
+    \node[port] (rp3) at (core.0) {};
+    \node[port] (rp4) at (core.330) {};
+    \node[port] (rp5) at (core.300) {};
+
+    % Labels
+    \node[lbl, rotate=90] at (-1.9, 0.0) {Input Ports};
+    \node[lbl, rotate=-90] at (1.9, 0.0) {Output Ports};
+    
+    % Boundary Labels
+    \node[lbl, rotate=90, font=\large\bfseries] at (-3.0, 0.0) {Driving Adapters};
+    \node[lbl, rotate=-90, font=\large\bfseries] at (3.0, 0.0) {Driven Adapters};
+
+\end{tikzpicture}

@@ -1,0 +1,38 @@
+\begin{tikzpicture}
+    % 1. Outer Boundary
+    \fill[teal!30] (90:4) -- (150:4) -- (210:4) -- (270:4) -- cycle;
+    \fill[teal!30] (90:4) -- (30:4) -- (330:4) -- (270:4) -- cycle;
+    \draw[blue!90, very thick] (90:4) -- (150:4) -- (210:4) -- (270:4) -- (330:4) -- (30:4) -- cycle;
+    \draw[blue!90, very thick] (90:4) -- (270:4);
+
+    % 2. Ports Layer
+    \fill[blue!8] (30:2.87) -- (90:2.87) -- (150:2.87) -- (210:2.87) -- (270:2.87) -- (330:2.87) -- cycle;
+    \draw[blue!70, very thick] (30:2.87) -- (90:2.87) -- (150:2.87) -- (210:2.87) -- (270:2.87) -- (330:2.87) -- cycle;
+
+    % 3. Application Core
+    \draw[blue!70, dashed] (30:2.25) -- (90:2.25) -- (150:2.25) -- (210:2.25) -- (270:2.25) -- (330:2.25) -- cycle;
+
+    % 4. Domain Model
+    \fill[blue!30] (30:0.9) -- (90:0.9) -- (150:0.9) -- (210:0.9) -- (270:0.9) -- (330:0.9) -- cycle;
+    \draw[blue!90, thick] (30:0.9) -- (90:0.9) -- (150:0.9) -- (210:0.9) -- (270:0.9) -- (330:0.9) -- cycle;
+
+    % 5. Text Labels
+    \node at (0,0) [font=\footnotesize\bfseries, align=center, text width=2cm] {Domain\\Model};
+    \node at (0,1.2) [blue!80, font=\tiny\bfseries] {Application Core};
+    
+    \node[rotate=90] at (-2.2, 0) [font=\tiny] {Input Ports};
+    \node[rotate=-90] at (2.2, 0) [font=\tiny] {Output Ports};
+    
+    \node[rotate=90] at (-3.0, 0) [font=\small\bfseries] {Driving Adapters};
+    \node[rotate=-90] at (3.0, 0) [font=\small\bfseries] {Driven Adapters};
+
+    % 6. Dependencies Arrow
+    % Points from the bottom left toward the Domain Model boundary
+    \draw[-{Stealth[length=5mm, width=3mm]}, very thick, black!80] (-3.5, -3.5) -- (-0.4, -0.7);
+    \node at (-2.1, -1.9) [
+        rotate=42, fill=white,          % This creates the "box"
+        inner sep=1.0pt,     % This controls how much white space is around the letters
+        rounded corners=1pt
+    ] {Dependencies};
+
+\end{tikzpicture}
