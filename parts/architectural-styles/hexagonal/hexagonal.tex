@@ -393,6 +393,19 @@ He is the updated diagram:
 
 For the sake of clarity, I have added a nice arrow to indicate that the dependencies point inward. Outer hexes may depend on inner hexes, e.g. by importing classes from the inner hex (package/module).
 
+Another way to diagram the final architecture is the more common way of using boxes for each layer/part. This is shown here:
+
+\needspace{16\baselineskip}
+\begin{figure}[htbp]
+    \centering
+    \resizebox{0.6\textwidth}{!}{%  % Adjust 0.8 to 1.0 for full width
+        \input{assets/hex_as_boxes}
+    }
+    \caption{The final architecture as boxes.}
+    \label{fig:hexagonal_as_boxes}
+\end{figure}
+
+
 \section{Testing Across the Hexagon Boundary}
 \label{sec:hexagonal_testing}
 
