@@ -12,13 +12,26 @@
 \usepackage{needspace}
 \usepackage{tikz}
 
-\usepackage{xcolor} % Already in your file
+\usepackage{xcolor}
 \usepackage[colorinlistoftodos, prependcaption, textsize=tiny]{todonotes}
+
+% Custom TODO for "Add Diagram" (Greenish)
+\newcommand{\tododiagram}[1]{\todo[color=teal!30, size=\scriptsize]{DIAGRAM: #1}}
+
+% Custom TODO for "In-book Reference" (Bluish)
+\newcommand{\todoinref}[1]{\todo[color=blue!20, size=\scriptsize]{IN-REF: #1}}
+
+% Custom TODO for "External Reference" (Purpleish)
+\newcommand{\todoextref}[1]{\todo[color=violet!20, size=\scriptsize]{EXT-REF: #1}}
+
+% Custom TODO for general "Fixes" (Yellow/Standard)
+\newcommand{\todofix}[1]{\todo[color=yellow!40, size=\scriptsize]{FIX: #1}}
 
 % Custom command for a big, inline TODO box that's easy to see
 \newcommand{\todobig}[1]{\todo[inline, color=red!20, size=\small]{#1}}
 
 \usetikzlibrary{shapes.geometric, arrows}
+\usetikzlibrary{arrows.meta}
 
 % --- 2. COLORS (ReSharper Night) ---
 \definecolor{rs_bg}{RGB}{30, 30, 30}
@@ -88,6 +101,9 @@
 \clearpage
 
 \mainmatter
+\part{Introduction}
+\subimport{parts/introduction/}{overview}
+\subimport{parts/introduction/}{case-study}
 
 \part{Architectural Styles}
 \subimport{parts/architectural-styles/hexagonal/}{hexagonal}
