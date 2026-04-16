@@ -26,4 +26,5 @@ public interface PlaceOrderPort {
 }
 \end{ridercode}
 ```
-- When referencing patterns or practices, use the \todo command to add a comment about references to be added later.
+- When referencing patterns or practices, use the \todo{text here} LaTeX command to add a comment about cross-references to be added later.
+- When coming up with examples, use the Case.md file to get ideas. 
