@@ -13,10 +13,10 @@
     \node[port] (p1) at (core.30) {};
     \node[port] (p2) at (core.0) {};
     \node[port] (p3) at (core.330) {};
-    \node[lbl] at (1.9, 2.0) {Output Port};
-    \node[lbl] at (1.9, -2.0) {Output Port};
+    \node[lbl] at (2.5, 2.0) {Output Port};
+    \node[lbl] at (2.5, -2.0) {Output Port};
 
-    \draw[->, thick] (p1) -- (db.west);
-    \draw[->, thick] (p2) -- (email.west);
-    \draw[->, thick] (p3) -- (pay.west);
+    \draw[<-, thick] (p1) -- (db.west);
+    \draw[<-, thick] (p2) -- (email.west);
+    \draw[<-, thick] (p3) -- (pay.west);
 \end{tikzpicture}
