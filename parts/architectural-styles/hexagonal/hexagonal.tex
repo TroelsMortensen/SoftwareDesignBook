@@ -470,6 +470,27 @@ What about outbound adapters? Again, we have many categories, try to organize yo
 
 Further subdivision of your application is of course possible, and as the capabilities of the application grow, you will likely need to add more sub-packages. Here, you will have to decide what is the best way to organize your code.
 
+For example, you may want a group of \texttt{repositories} ports, which are used to perform CRUD operations of entities on the database. You make a package for that: \texttt{outboundports/repositories}. Or you have ports for messaging, or sensor drivers. So, we can update the package structure to:
+
+\needspace{15\baselineskip}
+\begin{alltt}\small
+    \foldericon\ src/
+    |-- \foldericon\ application/
+    |   |-- \foldericon\ inboundports/
+    |   |-- \foldericon\ outboundports/
+    |   |   |-- \foldericon\ repositories/
+    |   |   |-- \foldericon\ messaging/
+    |   |   `-- \foldericon\ sensordrivers/
+    |   `-- \foldericon\ services/
+    |-- \foldericon\ domain/
+    |-- \foldericon\ inboundadapters/
+    |   |-- \foldericon\ gui/
+    |   `-- \foldericon\ web/
+    `-- \foldericon\ outboundadapters/
+        |-- \foldericon\ email/
+        `-- \foldericon\ persistence/
+\end{alltt}
+
 \subsection{Feature Folders}
 
 Another way to organize the application is to use feature folders. In the previous approach, a service class in the \texttt{services} package will expose an inboundport, located in the \texttt{inboundports} package. And it may depend on a number of outbound ports, located in the \texttt{outboundports} package. That means, classes which work closely together to implement a feature, are spread across different packages, and navigating between those files may become cumbersome. That, at least, is the concern, which leads to the feature folder approach. So, instead, we organize the code by feature, or use case, a package per. And the service class, with its inbound and outbound ports, will be located in the feature package.
@@ -505,9 +526,57 @@ You might similarly organize your adapter layers by feature, so in the \texttt{o
 
 So, which approach should you choose? Both are valid, and both have their own advantages and disadvantages.
 
+\subsubsection{Layer folders: pros}
+
+\begin{itemize}
+    \item clear architectural map for newcomers, because \texttt{services}, \texttt{inboundports}, and \texttt{outboundports} make dependency direction explicit,
+    \item easy to enforce package-level architecture rules and detect layering violations early, by simply looking at import statements,
+    \item consistent structure across many features, which improves predictability in larger teams,
+    \item centralized role-based code can simplify governance and cross-cutting standards,
+    \item architecture tests are often straightforward, because package naming aligns with technical roles.
+    \item reuse of outbound ports across services is easier, because multiple service classes in the service package can depend on the same outbound port.
+\end{itemize}
+
+\subsubsection{Layer folders: cons}
+
+\begin{itemize}
+    \item feature code becomes scattered across several packages, increasing navigation overhead,
+    \item implementing/updating one use case often requires changing files in multiple locations,
+    \item classes that evolve together can drift apart because they are separated by technical category,
+    \item extracting one capability later can be harder when its parts are distributed,
+    \item you risk tying services together if they depend on the same outbound ports. One services requires a change to the port, now the other service may encounter issues.
+\end{itemize}
+
+\subsubsection{Feature folders: pros}
+
+\begin{itemize}
+    \item high feature cohesion: service and ports for one use case live in one place,
+    \item faster development flow, because most edits for a feature are local to one folder, or even just one file,
+    \item ownership maps naturally to business capabilities rather than technical layers,
+    \item clear organization by feature, making it easier to understand what the application does,
+    \item updating a feature requires changes in \textit{one} package,
+    \item pull requests are often easier to review, because changes stay focused on one capability,
+    \item feature-oriented boundaries can make future extraction or modularization easier, if you want to move towards a \texttt{modular monolith}, \texttt{vertical slice architecture}, or \texttt{microservices}. \todoinref{add reference to modular monolith, vertical slice architecture, and microservices}
+\end{itemize}
+
+\subsubsection{Feature folders: cons}
+
+\begin{itemize}
+    \item repeated technical patterns can appear across features (validation, mapping, error handling) violating the DRY principle,
+    \item conventions may drift if teams do not actively maintain shared standards, each developer may invent their own conventions,
+    \item shared abstractions/ports need deliberate placement to avoid duplication or fragmentation, e.g. repository ports may be shared across features, and is often placed in a \texttt{common} package, which can grow larger and larger,
+    \item global refactoring of cross-cutting concerns may touch many feature folders, which can be difficult to manage.
+\end{itemize}
+
+\subsubsection{A practical choice guideline}
+
+\begin{itemize}
+    \item prefer \textbf{layer folders} when architectural governance, role consistency, and shared technical abstractions are the main concern,
+    \item prefer \textbf{feature folders} when business workflows change frequently and teams deliver vertical slices,
+    \item and consider a \textbf{hybrid}: keep top-level feature folders, while applying light internal layering inside each feature where useful.
+\end{itemize}
 
 
-% ------------------------------------------------------------
 
 \section{Testing Across the Hexagon Boundary}
 \label{sec:hexagonal_testing}
