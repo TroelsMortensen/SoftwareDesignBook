@@ -565,7 +565,8 @@ So, which approach should you choose? Both are valid, and both have their own ad
     \item repeated technical patterns can appear across features (validation, mapping, error handling) violating the DRY principle,
     \item conventions may drift if teams do not actively maintain shared standards, each developer may invent their own conventions,
     \item shared abstractions/ports need deliberate placement to avoid duplication or fragmentation, e.g. repository ports may be shared across features, and is often placed in a \texttt{common} package, which can grow larger and larger,
-    \item global refactoring of cross-cutting concerns may touch many feature folders, which can be difficult to manage.
+    \item global refactoring of cross-cutting concerns may touch many feature folders, which can be difficult to manage,
+    \item you may consider organizing adapters similarly, which may make you wonder \texttt{why split a feature folder into three feature folders in the first place}? And that's a valid question. Or if you still organize your adapters by technical role, you are mixing two approaches. Will that be confusing?
 \end{itemize}
 
 \subsubsection{A practical choice guideline}
@@ -595,10 +596,10 @@ In short, we can focus on unit testing the behaviour of the core, by mocking \to
 \subsection{Why Ports Improve Testability}
 \label{sec:hexagonal_why_ports_testability}
 
-Ports improve testability because they create explicit seams \todoinref{add reference to seams} around behavior. An input port gives us a stable way to invoke a use case, while output ports let us replace infrastructure with in-memory test doubles \todoinref{add reference to test doubles}. 
-In practice, we execute a use case through an input port and provide fake implementations such as \texttt{LoadBreachPort} or \texttt{PublishKaijuConfirmedPort}. This keeps most tests fast and deterministic, because they verify business rules without requiring a running database, broker, or HTTP stack.
+Ports improve testability because they create explicit \texttt{seams} \todoinref{add reference to seams} around behavior. An input port gives us a stable way to invoke a use case, while output ports let us replace infrastructure (outbound adapters) with in-memory test doubles \todoinref{add reference to test doubles}. 
+In practice, we execute a use case through an input port and provide fake implementations such as \texttt{LoadBreachPort} or \texttt{PublishKaijuConfirmedPort}. This keeps most tests fast and deterministic, because they verify business rules without requiring a running database, message broker, or HTTP communication.
 
-This is not exclusive to hexagonal architecture. A disciplined layered architecture can also isolate dependencies behind interfaces and achieve good tests. The practical difference is that hexagonal architecture makes these seams a first-class design element around the core, so isolated tests become the default rather than an optional refactoring.
+This is not exclusive to hexagonal architecture. A disciplined layered architecture can also isolate dependencies behind interfaces and achieve good tests. The practical difference is that hexagonal architecture makes these seams a first-class design element around the core application, so isolated tests become the default rather than an optional refactoring.
 
 \subsection{Testing Slices with Java}
 \label{sec:hexagonal_java_testing_slices}
@@ -654,7 +655,15 @@ Hexagonal and layered architecture are not enemies; both can be implemented well
 \subsection{When Migration Is Worth It}
 \label{sec:hexagonal_migration_when}
 
-Migration from layered to hexagonal is most useful when integration change is frequent, tests are dominated by slow end-to-end flows, or business rules are spread across controllers and repositories. If those symptoms are not present, a disciplined layered approach may remain the better economic choice.
+Migration from layered to hexagonal is most useful when integration change is frequent, tests are dominated by slow end-to-end flows, or business rules are spread across controllers and repositories. If those symptoms are not present, a disciplined layered approach may remain a fine choice.
+
+\needspace{3\baselineskip}
+\begin{itemize}
+    \item If your focus is initially on the database, the layered approach makes sense.
+    \item If your focus is initially on the business logic, the hexagonal approach makes sense, as you can focus on the services and the ports, and then add the adapters later.
+\end{itemize}
+
+In the end, the difference is not so much in the architecture, but in the focus.
 
 \subsection{Incremental Migration Steps}
 \label{sec:hexagonal_migration_steps}
