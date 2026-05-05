@@ -1,0 +1,3 @@
+snak om hvad arkitektur er.
+
+Nævn at man har moduler og packages, men jeg primært viser eksempler med packages.

@@ -1,0 +1,15 @@
+\usetikzlibrary{arrows.meta, positioning}
+
+\begin{tikzpicture}[
+    node distance=2.0cm and 2.0cm,
+    module/.style={draw, rounded corners, minimum width=4.2cm, minimum height=1.2cm, align=center},
+    dep/.style={-{Stealth[length=3mm, width=2mm]}, thick}
+]
+    \node[module] (presentation) {Presentation};
+    \node[module, right=of presentation] (persistence) {Persistence};
+    \node[module, below=of $(presentation)!0.5!(persistence)$] (entities) {Entities};
+
+    \draw[dep] (presentation.south) -- node[left, font=\small] {uses} (entities.north west);
+    \draw[dep] (persistence.south) -- node[right, font=\small] {maps to/from} (entities.north east);
+    \draw[dep] (presentation.east) -- node[above, font=\small] {calls persistence} (persistence.west);
+\end{tikzpicture}

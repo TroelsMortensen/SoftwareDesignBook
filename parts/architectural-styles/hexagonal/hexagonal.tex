@@ -290,35 +290,9 @@ public class KaijuEntity {
 }
 \end{ridercode}
 
-\subsection{Recommended Java Package Layout}
-\label{sec:hexagonal_package_layout}
 
-A package convention gives us a practical guardrail. We recommend organizing the module by architectural role so that core code remains stable while adapters can change:
 
-\tododiagram{really not what I had in mind, provide AI with example}
 
-\begin{figure}[htbp]
-    \centering
-    \input{assets/hex_step7_package_layout}
-    \caption{Pathfinder-style Java package layout for a hexagonal module.}
-    \label{fig:hexagonal_package_layout}
-\end{figure}
-
-A typical \tododiagram{Update this to show better package ascii art} package layout for the running example is:
-\needspace{13\baselineskip}
-\begin{ridercode}{Java}
-com.abyssalwatch.kaiju
-  domain
-  application
-    port.in
-    port.out
-  adapters
-    in.web
-    in.messaging
-    out.persistence
-    out.events
-  config
-\end{ridercode}
 
 \subsection{Dependency Rules}
 \label{sec:hexagonal_dependency_rules}
@@ -366,20 +340,22 @@ This distinction matters during development. With core-owned output ports, we ca
 
 In some projects, the first hexagonal version uses lightweight application services and simple data structures. That is a valid starting point. As rules become richer, we often add an explicit Domain Model to keep invariants and behavior close to business concepts.
 
+Cockburn's original model did not include an explicit domain model, but if you were to study this architecture online, you will find that it is usually included.
+
 
 
 \subsection{Why the Domain Model May Come Later}
 \label{sec:hexagonal_domain_later}
 
-In the original hexagonal architecture, there was no domain model. You \textit{can} write software without a domain model of classes and objects. 
+In the original hexagonal architecture, there was no domain model. You \textit{can} write software without a domain model of classes and objects. You might go with a simple \textit{data model}, meaning a collection of classes that represent the data you are working with. I realize some people \textit{do} consider this a domain model, but it is an \textit{anemic domain model}, meaning only data but no behavior. You can also go even more primitive and just use simple data structures, but I really don't think anyone wants that.
 
 About the same time as hexagonal architecture was introduced, the Domain-Driven Design (DDD) paradigm was introduced by Eric Evans \autocite{evans2003ddd}. And so, shortly after, the original hexagonal architecture diagram was extended with a domain model.
 
 Adding a domain model later is not a failure of architecture; it is often a sign of responsible evolution. We first establish boundaries and interaction patterns, then deepen the model when complexity justifies it.
 
-We can illustrate the addition of the Domain Model by introducing a new hexagon, inside the core. This now means that the Service classes, Application Core, can act upon the Domain Model, and that the Domain Model has no dependencies on any outer hexagon.
+We can illustrate the addition of the Domain Model by introducing a new hexagon, inside the core. This now means that the Service classes, in Application Core, can act upon the Domain Model, and that the Domain Model has no dependencies on any outer hexagon.
 
-He is the updated diagram:
+Figure~\ref{fig:hexagonal_with_domain} shows the updated diagram:
 
 \needspace{16\baselineskip}
 \begin{figure}[htbp]
@@ -391,9 +367,9 @@ He is the updated diagram:
     \label{fig:hexagonal_with_domain}
 \end{figure}
 
-For the sake of clarity, I have added a nice arrow to indicate that the dependencies point inward. Outer hexes may depend on inner hexes, e.g. by importing classes from the inner hex (package/module).
+For the sake of clarity, I have added a nice arrow to indicate that the dependencies point inward. Outer hexes (layers) may depend on inner hexes, e.g. by importing and using classes or functions from the inner hex (package/module).
 
-Another way to diagram the final architecture is the more common way of using boxes for each layer/part. This is shown here:
+Another way to diagram the final architecture is the more common way of using boxes for each layer/part. This is shown in Figure~\ref{fig:hexagonal_as_boxes}:
 
 \needspace{16\baselineskip}
 \begin{figure}[htbp]
@@ -406,6 +382,133 @@ Another way to diagram the final architecture is the more common way of using bo
 \end{figure}
 
 
+\section{Package Layout}
+\label{sec:hexagonal_package_layout}
+
+An important aspect of \textit{architecture} is the organization of the code into packages and modules, along with the dependencies between them. Most architectural styles will have a recommended superficial package layout, so let us explore how we can organize an application using hexagonal architecture.
+
+A package convention gives us a practical guardrail. We can often organize our code by architectural role, so that core code remains stable while adapters can change. There are many ways to do this, I will give an overall recommendation, and then two suggestions on how to organize the aplication hex: layers and feature-folders. 
+
+\subsection{Overall structure}
+
+We generally have three parts to a hexagonal architecture: the core, the driving (inbound) adapters, and the driven (outbound) adapters. So, that's where we start: create three packages (or modules).
+
+\needspace{5\baselineskip}
+\begin{alltt}\small
+    \foldericon\ src/
+    |-- \foldericon\ application/
+    |-- \foldericon\ inboundadapters/
+    `-- \foldericon\ outboundadapters/
+\end{alltt}
+
+Many applications, across many architectural styles, will actually have a similar package structure, perhaps just differently named. Sometimes the application is called "core", sometimes "services". The same responsibility has been named different things over the years.
+
+Next, we also need the domain. We can place it inside the application package, to represent that the domain hex is inside the application hex. Or, we can put it in a separate package. Below, I will show the latter:
+
+\needspace{6\baselineskip}
+\begin{alltt}\small
+    \foldericon\ src/
+    |-- \foldericon\ application/
+    |-- \foldericon\ domain/
+    |-- \foldericon\ inboundadapters/
+    `-- \foldericon\ outboundadapters/
+\end{alltt}
+
+Then, we have to further organize the application hex, or package. As mentioned earlier, I will show two approaches: layers and feature-folders.
+
+\subsection{Application Layers}
+
+Let's start with layers. The application hex consists of service classes (the classes performing the use cases), inbound ports (the interfaces exposing the use cases to the outside world), and outbound ports (the interfaces defining the capabilities the core needs from the outside world). If we go with the layered approach, we divide files by their responsibility, or category. That means three sub-packages:
+
+\needspace{10\baselineskip}
+\begin{alltt}\small
+    \foldericon\ src/
+    |-- \foldericon\ application/
+    |   |-- \foldericon\ inboundports/
+    |   |-- \foldericon\ outboundports/
+    |   `-- \foldericon\ services/
+    |-- \foldericon\ domain/
+    |-- \foldericon\ inboundadapters/
+    `-- \foldericon\ outboundadapters/
+\end{alltt}
+
+This is the basics. Your application may need other kinds of classes, which do not fit into one of the three categories. 
+
+I will not go into too details about the adapters here. In your \texttt{inboundadapters} package, you will have classes that let's the outside world interact with the application. This could be a Web API controller, a CLI handler, a GUI controller, a message consumer, or something else. Let's just say that our application exposes a REST API, and also has a GUI. I will make two sub-packages in the \texttt{inboundadapters} package: \texttt{web} and \texttt{gui}.
+
+\needspace{10\baselineskip}
+\begin{alltt}\small
+    \foldericon\ src/
+    |-- \foldericon\ application/
+    |   |-- \foldericon\ inboundports/
+    |   |-- \foldericon\ outboundports/
+    |   `-- \foldericon\ services/
+    |-- \foldericon\ domain/
+    |-- \foldericon\ inboundadapters/
+    |   |-- \foldericon\ web/
+    |   `-- \foldericon\ gui/
+    `-- \foldericon\ outboundadapters/
+\end{alltt}
+
+What about outbound adapters? Again, we have many categories, try to organize your code by your needs. For example, you may have a package for \texttt{persistence}, \texttt{events}, \texttt{notifications}, \texttt{messaging}, \texttt{email}, \texttt{logging}, \texttt{sensordrivers}, \texttt{externalAPIs}, etc. Let's just add a sub-package for \texttt{persistence} and \texttt{email}:
+
+\needspace{12\baselineskip}
+\begin{alltt}\small
+    \foldericon\ src/
+    |-- \foldericon\ application/
+    |   |-- \foldericon\ inboundports/
+    |   |-- \foldericon\ outboundports/
+    |   `-- \foldericon\ services/
+    |-- \foldericon\ domain/
+    |-- \foldericon\ inboundadapters/
+    |   |-- \foldericon\ gui/
+    |   `-- \foldericon\ web/
+    `-- \foldericon\ outboundadapters/
+        |-- \foldericon\ email/
+        `-- \foldericon\ persistence/
+\end{alltt}
+
+Further subdivision of your application is of course possible, and as the capabilities of the application grow, you will likely need to add more sub-packages. Here, you will have to decide what is the best way to organize your code.
+
+\subsection{Feature Folders}
+
+Another way to organize the application is to use feature folders. In the previous approach, a service class in the \texttt{services} package will expose an inboundport, located in the \texttt{inboundports} package. And it may depend on a number of outbound ports, located in the \texttt{outboundports} package. That means, classes which work closely together to implement a feature, are spread across different packages, and navigating between those files may become cumbersome. That, at least, is the concern, which leads to the feature folder approach. So, instead, we organize the code by feature, or use case, a package per. And the service class, with its inbound and outbound ports, will be located in the feature package.
+
+Here is an example, I have just updated the \texttt{application} package to use feature folders:
+
+\needspace{12\baselineskip}
+\begin{alltt}\small
+    \foldericon\ src/
+    |-- \foldericon\ application/
+    |   `-- \foldericon\ features/
+    |       |-- \foldericon\ confirmkaijudetection/
+    |       |   |-- \fileicon\ ConfirmKaijuDetectionInboundPort.java
+    |       |   |-- \fileicon\ ConfirmKaijuDetectionService.java
+    |       |   |-- \fileicon\ KaijuConfirmedEvent.java
+    |       |   `-- \fileicon\ ConfirmKaijuDetectionOutboundPort.java
+    |       |-- \foldericon\ registerkaiju/
+    |       `-- \foldericon\ triangulatekaiju/
+    |-- \foldericon\ domain/
+    |-- \foldericon\ inboundadapters/
+    |   |-- \foldericon\ gui/
+    |   `-- \foldericon\ web/
+    `-- \foldericon\ outboundadapters/
+        |-- \foldericon\ email/
+        `-- \foldericon\ persistence/
+\end{alltt}
+
+Notice how each feature package clearly describes the feature through its name. It then contains whatever classes and interfaces are needed to implement the feature. The adapters, of course, are still placed outside. Just pretend the other feature packages also contains relevant files.
+
+You might similarly organize your adapter layers by feature, so in the \texttt{outboundadapters} package, you will have sub-packages \texttt{confirmkaijudetection}, \texttt{registerkaiju}, and \texttt{triangulatekaiju}. And the same for the \texttt{inboundadapters} package.
+
+\subsection{Layers vs Feature Folders}
+
+So, which approach should you choose? Both are valid, and both have their own advantages and disadvantages.
+
+
+
+% ------------------------------------------------------------
+
 \section{Testing Across the Hexagon Boundary}
 \label{sec:hexagonal_testing}
 
@@ -417,6 +520,8 @@ The separation of concerns gives us a practical testing strategy:\autocite{huttu
 \end{itemize}
 
 In short, we can focus on unit testing the behaviour of the core, by mocking \todoinref{add reference to mocking} the driven adapters.
+
+
 
 \subsection{Why Ports Improve Testability}
 \label{sec:hexagonal_why_ports_testability}

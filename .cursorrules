@@ -1,4 +1,5 @@
-- I am writing a technical book in LaTeX. When generating content:
+- I am writing a technical book in LaTeX. The book is for software engineering students, as an introduction to the variuos concepts.
+When generating content:
 - Use \section and \subsection for hierarchy.
 - Use the listings package for code blocks.
 - Always include \label{} for sections and figures so I can cross-reference them.

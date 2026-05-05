@@ -1,0 +1,403 @@
+\chapter{3-Layered Architecture}
+\label{ch:three_layered}
+
+3-layered architecture is one of the most practical ways to structure business applications. We separate the system into \textit{presentation}, \textit{application}, and \textit{persistence}, so each part has a clear responsibility and can evolve with lower coordination cost. The style is especially useful when we need straightforward delivery with maintainable boundaries.
+
+In this chapter, we use the \texttt{Abyssal Watch} case study and one running use case: \texttt{Confirm First Kaiju Detection}. Later, we compare this structure with hexagonal architecture, where boundaries are oriented around inside/outside contracts instead of horizontal layers.\autocite{fowler2002patterns}
+
+\section{Why We Use 3-Layered Architecture}
+\label{sec:three_layered_why}
+
+The main benefit of this style is separation of concerns. We isolate transport and UI concerns in \texttt{presentation}, orchestration and business rules in \texttt{application}, and storage concerns in \texttt{persistence}. This gives teams a shared mental model for where new code should live.
+
+The default dependency direction is:
+\begin{itemize}
+    \item \texttt{presentation -> application -> persistence}
+\end{itemize}
+
+In practice, this means:
+\begin{itemize}
+    \item \texttt{presentation} translates requests and responses,
+    \item \texttt{application} executes use cases and coordinates work,
+    \item \texttt{persistence} loads and stores data with database-specific mechanisms.
+\end{itemize}
+
+\section{Step 1: Start with the Application Layer}
+\label{sec:three_layered_step1}
+
+We begin from the application layer because it expresses intent most clearly: what behavior the system must perform for a use case. For \texttt{Confirm First Kaiju Detection}, the service validates mission context, creates a new \texttt{Kaiju}, and coordinates persistence operations.
+
+\subsection{Application Service Example in Java}
+\label{sec:three_layered_application_service_java}
+
+The application service is responsible for orchestration and business flow, not HTTP details and not SQL details.
+
+\needspace{16\baselineskip}
+\begin{ridercode}{Java}
+public final class ConfirmKaijuDetectionService {
+    private final BreachDao breachDao;
+    private final KaijuDao kaijuDao;
+    private final UnitOfWork unitOfWork;
+
+    // Constructor omitted for brevity.
+
+    public KaijuId confirmDetection(ConfirmKaijuDetectionCommand command) {
+        return unitOfWork.execute(() -> {
+            Breach breach = breachDao.findById(command.originBreachId())
+                                     .orElseThrow();
+
+            Kaiju kaiju = Kaiju.confirmed(
+                    command.codename(),
+                    command.classification(),
+                    breach.id());
+
+            kaijuDao.save(kaiju);
+            return kaiju.id();
+        });
+    }
+}
+\end{ridercode}
+
+\section{Step 2: Add the Presentation Layer}
+\label{sec:three_layered_step2}
+
+The presentation layer receives external input and maps it into application commands. In a web API, this usually means converting a request DTO into a command object and returning a response DTO. The presentation layer should stay thin and avoid embedding business rules.
+
+\subsection{Presentation Mapping Example in Java}
+\label{sec:three_layered_presentation_mapping_java}
+
+\needspace{16\baselineskip}
+\begin{ridercode}{Java}
+@RestController
+@RequestMapping("/kaiju-detections")
+public class KaijuController {
+    private final ConfirmKaijuDetectionService service;
+
+    @PostMapping
+    public ResponseEntity<ConfirmKaijuDetectionResponse> confirm(
+            @RequestBody ConfirmKaijuDetectionRequest request) {
+        ConfirmKaijuDetectionCommand command =
+                new ConfirmKaijuDetectionCommand(
+                        request.codename(),
+                        request.classification(),
+                        request.originBreachId());
+
+        KaijuId id = service.confirmDetection(command);
+        return ResponseEntity.accepted()
+                .body(new ConfirmKaijuDetectionResponse(id.value()));
+    }
+}
+\end{ridercode}
+
+\section{Step 3: Add the Persistence Layer}
+\label{sec:three_layered_step3}
+
+The persistence layer encapsulates data access concerns. In this chapter we assume \texttt{DAO} classes and a \texttt{UnitOfWork} abstraction to make transaction boundaries explicit. The application layer depends on these abstractions, while SQL, ORM mapping, and transaction mechanisms remain in persistence implementations.
+
+\subsection{DAO and Unit of Work Example in Java}
+\label{sec:three_layered_persistence_dao_uow_java}
+
+\needspace{18\baselineskip}
+\begin{ridercode}{Java}
+public interface BreachDao {
+    Optional<Breach> findById(BreachId breachId);
+}
+
+public interface KaijuDao {
+    void save(Kaiju kaiju);
+}
+
+public interface UnitOfWork {
+    <T> T execute(Supplier<T> action);
+}
+
+public final class JpaUnitOfWork implements UnitOfWork {
+    @Override
+    public <T> T execute(Supplier<T> action) {
+        // Begin transaction
+        try {
+            T result = action.get();
+            // Commit transaction
+            return result;
+        } catch (RuntimeException ex) {
+            // Roll back transaction
+            throw ex;
+        }
+    }
+}
+\end{ridercode}
+
+\section{Optional Module: Entities}
+\label{sec:three_layered_entities_module}
+
+Strict 3-layered architecture does not require an explicit fourth module for entities, but many teams add one to keep core concepts stable and shared. In \texttt{Abyssal Watch}, entities such as \texttt{Kaiju}, \texttt{Breach}, and \texttt{CommandCarrier} can live in an \texttt{entities} module referenced by both \texttt{application} and \texttt{persistence}.
+
+This gives us a stronger ubiquitous language, but we must protect the model from infrastructure leakage. If entity classes become decorated with persistence framework concerns, we lose the benefit of a clean conceptual model.\autocite{evans2003ddd}
+
+\section{Optional Module: DTOs}
+\label{sec:three_layered_dto_module}
+
+A dedicated \texttt{dtos} module is useful when data contracts between \texttt{presentation} and \texttt{application} must be explicit and stable. DTOs help us avoid exposing full entities and allow each use case to define the exact shape needed for input and output.
+
+Mapping does introduce extra code, but that cost is often acceptable because it keeps contracts intentional and prevents accidental coupling between view concerns and core models.
+
+\subsection{DTO Example in Java}
+\label{sec:three_layered_dto_java}
+
+\needspace{12\baselineskip}
+\begin{ridercode}{Java}
+public record ConfirmKaijuDetectionRequest(
+        String codename,
+        KaijuClassification classification,
+        BreachId originBreachId) {}
+
+public record ConfirmKaijuDetectionCommand(
+        String codename,
+        KaijuClassification classification,
+        BreachId originBreachId) {}
+
+public record ConfirmKaijuDetectionResponse(String kaijuId) {}
+\end{ridercode}
+
+\section{Recommended Package and Module Layout}
+\label{sec:three_layered_package_layout}
+
+One practical Java layout for the baseline style is:
+
+\needspace{14\baselineskip}
+\begin{ridercode}{Java}
+com.abyssalwatch
+  presentation
+    web
+    dto
+  application
+    service
+    command
+  persistence
+    dao
+    unitofwork
+    jpa
+  entities
+  dtos
+  config
+\end{ridercode}
+
+If requirements expand beyond data storage, we can evolve this outer layer from \texttt{persistence} to \texttt{infrastructure}, for example:
+
+\needspace{14\baselineskip}
+\begin{ridercode}{Java}
+com.abyssalwatch
+  presentation
+    web
+    dto
+  application
+    service
+    command
+  infrastructure
+    persistence
+      dao
+      unitofwork
+      jpa
+    messaging
+    integrations
+  entities
+  dtos
+  config
+\end{ridercode}
+
+Dependency rules for these layouts:
+\begin{itemize}
+    \item \texttt{presentation} depends on \texttt{application} and \texttt{dtos}.
+    \item \texttt{application} depends on \texttt{entities} and outer-layer abstractions.
+    \item \texttt{persistence} or \texttt{infrastructure} depends on \texttt{entities} and technology implementations.
+    \item \texttt{presentation} should not call the outer layer directly.
+    \item \texttt{config} is allowed to wire all layers.
+\end{itemize}
+
+\section{Assembling Data for Views}
+\label{sec:three_layered_view_assembly}
+
+The data needed by a view is often not identical to a single entity shape. For example, an operations dashboard may require combined information from \texttt{Kaiju}, \texttt{Breach}, and \texttt{CommandCarrier} plus derived metrics. We therefore need an explicit strategy for assembling view data.
+
+\subsection{Approach A: Persistence-Level Assembly}
+\label{sec:three_layered_view_assembly_persistence}
+
+In this approach, the persistence layer offers DAO methods that directly return view-oriented projections or DTOs, typically through specialized queries under a \texttt{UnitOfWork} boundary.
+
+Advantages:
+\begin{itemize}
+    \item fewer database round-trips for complex views,
+    \item query engines can optimize joins, filtering, and aggregation,
+    \item slimmer orchestration logic in application services.
+\end{itemize}
+
+Trade-offs:
+\begin{itemize}
+    \item persistence starts to absorb presentation-driven concerns,
+    \item DAO APIs may proliferate as view variants grow,
+    \item changes in view shape can force persistence-level refactoring.
+\end{itemize}
+
+\subsection{Approach B: Service-Level Assembly}
+\label{sec:three_layered_view_assembly_service}
+
+In this approach, application services call multiple DAOs and assemble a DTO for the presentation layer. The orchestration logic remains close to use-case intent.
+
+Advantages:
+\begin{itemize}
+    \item assembly rules stay in the application layer where use-case policies live,
+    \item easier reuse across multiple presentation channels,
+    \item persistence remains focused on entity-oriented data access.
+\end{itemize}
+
+Trade-offs:
+\begin{itemize}
+    \item risk of chatty data access and performance regressions,
+    \item more coordination code in services,
+    \item requires discipline to avoid duplicating assembly logic.
+\end{itemize}
+
+\subsection{CQRS Perspective for Read Models}
+\label{sec:three_layered_view_assembly_cqrs}
+
+When read requirements become dominant, a CQRS-inspired approach can reduce tension between write-side entities and read-side views. We keep command processing aligned with the write model, and introduce specialized read models or query DTOs for presentation concerns.
+
+This can improve read performance and clarity of intent, but introduces operational and conceptual complexity: additional model maintenance, synchronization flows, and possible eventual consistency between write and read sides. We should treat CQRS as an optional evolution path, not a default starting point.
+
+\subsection{Decision Guidance}
+\label{sec:three_layered_view_assembly_guidance}
+
+As a guideline:
+\begin{itemize}
+    \item choose persistence-level assembly when query efficiency is critical and view shapes are relatively stable,
+    \item choose service-level assembly when use-case orchestration and cross-channel reuse are primary concerns,
+    \item evaluate CQRS when read complexity and read scalability begin to dominate the architecture.
+\end{itemize}
+
+\section{Testing Strategy Across Layers and Modules}
+\label{sec:three_layered_testing}
+
+The testing strategy follows the architectural boundaries:
+\begin{itemize}
+    \item test \texttt{application} services with DAO test doubles for fast business-rule feedback,
+    \item test \texttt{persistence} DAOs and \texttt{UnitOfWork} behavior with integration tests,
+    \item keep a focused set of end-to-end tests for full request-to-response flows.
+\end{itemize}
+
+\subsection{Application Slice Test Example}
+\label{sec:three_layered_testing_java}
+
+\needspace{20\baselineskip}
+\begin{ridercode}{Java}
+@Test
+void confirmsDetectionWithinUnitOfWork() {
+    FakeBreachDao breachDao = new FakeBreachDao();
+    FakeKaijuDao kaijuDao = new FakeKaijuDao();
+    ImmediateUnitOfWork unitOfWork = new ImmediateUnitOfWork();
+
+    ConfirmKaijuDetectionService service =
+            new ConfirmKaijuDetectionService(breachDao, kaijuDao, unitOfWork);
+
+    ConfirmKaijuDetectionCommand command =
+            new ConfirmKaijuDetectionCommand(
+                    "Leatherback",
+                    KaijuClassification.CATEGORY_III,
+                    new BreachId("B-01"));
+
+    KaijuId id = service.confirmDetection(command);
+    assertTrue(kaijuDao.savedIds().contains(id));
+}
+\end{ridercode}
+
+\section{When Persistence Becomes Infrastructure}
+\label{sec:three_layered_persistence_to_infrastructure}
+
+\subsection{Case Trigger from Abyssal Watch}
+\label{sec:three_layered_persistence_to_infrastructure_case_trigger}
+
+In \texttt{Confirm First Kaiju Detection}, we do not only persist a new \texttt{Kaiju}; we may also need to publish a mission alert to command systems. This requirement crosses storage boundaries and adds another technical concern to the same outer layer.
+
+\subsection{Why Persistence Can Be Too Narrow}
+\label{sec:three_layered_persistence_to_infrastructure_why}
+
+The name \texttt{persistence} works well when the outer layer is mainly database interaction. Over time, however, we often add messaging, third-party APIs, file/object storage, caching, or telemetry delivery. At that point, \texttt{infrastructure} is a better name because it reflects the broader scope of technical capabilities.
+
+This is a scope and naming evolution, not a new dependency model. We still keep business rules in \texttt{application}, and we still isolate technology details at the outside edge.
+
+\subsection{Recommended Evolution Path}
+\label{sec:three_layered_persistence_to_infrastructure_path}
+
+We can evolve incrementally:
+\begin{enumerate}
+    \item start with a \texttt{persistence} layer while storage is the dominant external concern,
+    \item rename it to \texttt{infrastructure} when multiple non-storage concerns become stable,
+    \item split by capability, for example \texttt{infrastructure.persistence}, \texttt{infrastructure.messaging}, and \texttt{infrastructure.integrations}.
+\end{enumerate}
+
+The dependency direction remains \texttt{presentation -> application -> infrastructure}. Application services should still depend on interfaces or abstractions, not concrete providers.
+
+\subsection{Trade-offs and Guardrails}
+\label{sec:three_layered_persistence_to_infrastructure_tradeoffs}
+
+Benefits of the rename include clearer terminology, cleaner growth paths for new technical concerns, and reduced mismatch between architecture names and real responsibilities.
+
+The main risk is turning \texttt{infrastructure} into a dumping ground. We can prevent this by applying simple guardrails:
+\begin{itemize}
+    \item keep business decisions in \texttt{application}, not in infrastructure adapters,
+    \item organize infrastructure by capability, not by framework classes,
+    \item define explicit contracts from \texttt{application} to infrastructure capabilities,
+    \item and avoid direct \texttt{presentation -> infrastructure} calls.
+\end{itemize}
+
+\section{When the Database Shapes the Application}
+\label{sec:three_layered_database_shapes_application}
+
+\subsection{Why This Happens in Practice}
+\label{sec:three_layered_database_shapes_why}
+
+In traditional layered systems, dependency flow can accidentally make the application model mirror storage structures. Even when dependencies point downward, teams often shape service contracts around table boundaries and repository return types. Over time, schema concerns leak upward, and domain objects risk becoming anemic carriers of fields with little behavior.
+
+\subsection{Database-First Workflow and Ripple Effects}
+\label{sec:three_layered_database_shapes_workflow}
+
+A common workflow is \texttt{ERD first -> entities from tables -> logic around CRUD}. This can ship quickly, but it creates a strong coupling path from schema changes into application and presentation models. Renaming a column or reshaping a relation then ripples across DTOs, service methods, and user-facing contracts.
+
+This failure mode is common, but not inevitable. Layered architecture can avoid it when we treat persistence structures as implementation details instead of application truth.
+
+\subsection{Technology Leakage into Business Logic}
+\label{sec:three_layered_database_shapes_leakage}
+
+Leakage appears when use-case services encode SQL-specific assumptions, such as join structure, foreign key workflows, or ORM navigation behavior. For example, in \texttt{Confirm First Kaiju Detection}, application behavior should center on mission rules and \texttt{Kaiju}/\texttt{Breach} invariants, while join-heavy retrieval and mapping stay in persistence or infrastructure adapters.
+
+When this separation is ignored, replacing relational storage with a document or event-oriented model becomes expensive because application code depends on relational details.
+
+\subsection{How We Mitigate This in Layered Architecture}
+\label{sec:three_layered_database_shapes_mitigation}
+
+We can keep a layered design and still prevent database-shaped applications:
+\begin{itemize}
+    \item model use cases and invariants first in \texttt{application},
+    \item keep explicit DTO boundaries between \texttt{presentation} and \texttt{application},
+    \item map between domain-facing objects and storage-facing representations in the outer layer,
+    \item apply dependency inversion so services depend on capability interfaces, not provider APIs,
+    \item and treat persistence or infrastructure as replaceable technical detail.
+\end{itemize}
+
+\section{Practical Trade-offs and Common Mistakes}
+\label{sec:three_layered_tradeoffs}
+
+3-layered architecture remains a strong default, but quality depends on discipline. Common mistakes include:
+\begin{itemize}
+    \item moving business rules into controllers,
+    \item placing business orchestration inside DAOs,
+    \item leaking persistence entities directly into presentation contracts,
+    \item letting schema changes directly drive application model changes without boundary mapping,
+    \item bypassing application services and calling persistence directly.
+\end{itemize}
+
+\subsection{Layered and Hexagonal: Practical Relationship}
+\label{sec:three_layered_hexagonal_bridge}
+
+Layered and hexagonal architecture are compatible ideas, not opposing camps. A disciplined layered design can still apply dependency inversion and clear boundaries. Hexagonal architecture makes boundary contracts explicit as ports and adapters, while layered architecture keeps a simpler role-based structure around presentation, application, and persistence.
+
+For many teams, layered architecture is the right initial choice. As integration churn, testing pain, or database-shaped modeling pressure increase, teams can evolve selected use cases toward a more explicit ports-and-adapters style.

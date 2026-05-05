@@ -1,0 +1,14 @@
+How to organize hex app layer. 
+Layers: alle services sammen, in ports sammen, out ports sammen. 
+
+Eller feature folder. 
+
+Pros/cons? 
+
+ 
+Triangulation, forskellige adapters ift sensor 
+
+ 
+Hex, vi kan fokusere på business logik og ports før vi har adapters. Eksempel. Udvikl feature, vi ved ikke hvordan sensor input ser ud, men vi definerer port. 
+Eksempel, poll array of sensors. 
+

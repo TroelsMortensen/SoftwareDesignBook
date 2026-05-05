@@ -32,6 +32,7 @@
 
 \usetikzlibrary{shapes.geometric, arrows}
 \usetikzlibrary{arrows.meta}
+\usetikzlibrary{calc}
 
 % --- 2. COLORS (ReSharper Night) ---
 \definecolor{rs_bg}{RGB}{30, 30, 30}
@@ -86,6 +87,14 @@
 
 \addbibresource{references.bib}
 
+% --- Folder layout helper ---
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{alltt}
+\usepackage{fontawesome} % works with pdflatex in most TeX distros
+\newcommand{\foldericon}{\faFolderO}
+\newcommand{\fileicon}{\faFileTextO}
+
 % --- BOOK METADATA ---
 \title{Software - Architecture, Design, Test}
 \author{Troels Mortensen}
@@ -105,7 +114,9 @@
 \subimport{parts/introduction/}{overview}
 \subimport{parts/introduction/}{case-study}
 
-\part{Architectural Styles}
+% \part{Architectural Styles}
+% \subimport{parts/architectural-styles/2-layered/}{2-layered}
+% \subimport{parts/architectural-styles/3-layered/}{3-layered}
 \subimport{parts/architectural-styles/hexagonal/}{hexagonal}
 
 \backmatter

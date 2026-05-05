@@ -1,0 +1,12 @@
+\usetikzlibrary{arrows.meta, positioning}
+
+\begin{tikzpicture}[
+    node distance=1.8cm,
+    module/.style={draw, rounded corners, minimum width=4.3cm, minimum height=1.2cm, align=center},
+    dep/.style={-{Stealth[length=3mm, width=2mm]}, thick}
+]
+    \node[module] (presentation) {Presentation};
+    \node[module, below=of presentation] (persistence) {Persistence};
+
+    \draw[dep] (presentation.south) -- node[right, font=\small] {load/save entities} (persistence.north);
+\end{tikzpicture}
