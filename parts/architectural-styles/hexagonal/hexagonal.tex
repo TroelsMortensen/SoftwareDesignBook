@@ -578,6 +578,161 @@ So, which approach should you choose? Both are valid, and both have their own ad
 \end{itemize}
 
 
+\section{Example}
+
+I hope by now you have some kind of understanding of the architecture. Comparing it to the layered architecture, the main difference is primarily about where the outbound ports (interfaces) are placed. The rest is pretty similar to the layered architecture. So, I think it is time for another example. It will perhaps be a bit elaborate, because I had fun developing the use case. It is about using sensors to triangulate the position of a suspected Kaiju.
+
+I will describe the use case, introduce the classes and ports involved, their relationships, and the package layout. I will also provide relevant code snippets. The focus will be on the structure of the code, primarily around the application hex, i.e. the service class. The inbound adapter could just be a Web API endpoint, which is not particularly interesting. And some of the outbound adapters would become too technical to be interesting, for example how to poll the sensors for data. 
+
+Furthermore, the specific purpose of the hexagonal architecture is to focus on the application logic, and treat the external adapters as technical details. You should notice that the shape of the outbound port is defined by what the application service needs. An adapter will then have to figure out how to actually achieve that, for example by connecting to a sensor and polling it for data.
+
+\subsection{Use Case: Triangulate Kaiju Position}
+
+Here is the use case: Suppose we suspect a Kaiju has exited a Breach, and we want to triangulate its position. We have sensors placed across the sea, sensors of various types: Seismic, Acoustic, Radiation, Thermal, etc. We want to select a relevant number of sensors in the suspected area, and use their readings to triangulate the position of the Kaiju. The result is an estimated area of the Kaiju, and we can then launch a Scout Vessel to investigate, and possibly visually confirm the Kaiju.
+
+\subsection{Visual explanation}
+
+As mentioned earlier, I picked this case because it is a bit elaborate, and I had fun developing it. It also (I hope) illustrates the concept of the hexagonal architecture well. But it does require me to introduce a bit of domain terminology first, so let's start with that.
+
+Let's assume that any sensor, regardless of type, can return a reading which includes a direction (relative to the sensor's location), and a distance. This would result in a point on a 2d plane, i.e. the position of the Kaiju. However, sensors have some uncertainty in their readings, for example because of heavy waves, which may distort readings, or sea floor conditions like reefs, rocks, sand, etc, which may also distort readings. Therefore, we do not get a point, but an area. This area is called a \textit{Annular Sector}.
+
+And what exactly is an annular sector? Observe Figure~\ref{fig:annular-sector}.
+
+\begin{figure}[htbp]
+    \centering
+    % --- Left Column: The List ---
+    \begin{minipage}[c]{0.45\textwidth}
+        \begin{enumerate}[label=\Alph*), leftmargin=*] % leftmargin=* saves space
+            \item Here we have a sensor, in the bottom left corner.
+            \item Here is the Kaiju, we suspect has appeared.
+            \item The sensor will produce a measurement, i.e. a vector, relative to the sensor's location.
+            \item The sensor has angular uncertainty, of some degree $\theta$.
+            \item The direction is therefore a circular sector.
+            \item The sensor has distance uncertainty, of some radius \texttt{r}.
+            \item This results in two circular sectors (min and max distance).
+            \item In the end, we end up with the annular sector (red shaded area).
+        \end{enumerate}
+    \end{minipage}
+     \hfill % Adds horizontal space between the two columns
+    % --- Right Column: The Image ---
+    \begin{minipage}[c]{0.50\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{assets/annular-sector.png}
+        \caption{Deriving the annular sector.}
+        \label{fig:annular-sector}
+    \end{minipage}
+\end{figure}
+
+Now, let's assume we have multiple sensors, each producing an annular sector. We can then use the intersection of these sectors to get a more accurate estimate of the Kaiju's position. This is the principle of triangulation. See Figure~\ref{fig:annular-sector-triangulation}. Based on the sensor data from 5 different sensors, we have narrowed down the possible position of the Kaiju to a small area, marked in purple.
+
+\needspace{15\baselineskip}
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.3\textwidth]{assets/annular-sector-triangulation.png} 
+    \caption{Triangulation of multiple annular sectors.}
+    \label{fig:annular-sector-triangulation}
+\end{figure}
+
+Good, I trust that the idea of the use case is now clear. The input to the use case is a suspected location: a point, plus a radius. All sensors within that radius will be polled. The output is an estimated area, wherein the Kaiju is likely to be. Another use case could then be to visually confirm the Kaiju, by launching a Scout Vessel to the estimated area. But, one thing at a time. Let's start with the triangulation use case.
+
+I will try to balance the complexity by abstracting away some technical details, like how to calculate the output area from the array of annular sectors. Let's just assume, we can write a method that takes an array of annular sectors, and returns an estimated area, wherein the Kaiju is likely to be.
+
+\subsection{Classes involved}
+
+Let's look at the classes involved, I will provide a brief overview. Follow up sections will show the structure or location of the code, in relation to the hexagonal architecture. As this architecture focuses on business logic first, let's derive the classes from the use case by moving from inner hexes to outer hexes.
+
+
+\subsubsection{Domain}
+
+Let's start with the inner most hexagon, the domain.
+
+\begin{enumerate}
+    \item I need a domain entity to represent the \texttt{Sensor}. It will contain various values, and some of these will be represented by other classes. You will see in the code later.
+    \item To avoid \texttt{primitive obsession}, I am going to model this with a few other classes, like \texttt{Location}, \texttt{Longitude}, \texttt{Latitude}, \texttt{SensorId}, \texttt{SensorType}, and perhaps more.
+\end{enumerate}
+
+\subsubsection{Application}
+
+Then we move on to the application hexagon, where I define services and ports.
+
+\begin{enumerate}
+    \item I need the \texttt{Service} class to implement the use case, \texttt{TriangulateKaijuPositionService}. It will contain the business logic, and will depend on the \texttt{Sensor} entity. It will have a method for executing the use case, which takes a \texttt{Location}, and a \texttt{Radius}. It will return a class, \texttt{EstimatedArea}, to represent the estimated area of the Kaiju. This \texttt{EstimatedArea} is not a domain entity, but just a simple object with a few properties.
+    \item My \texttt{Service} class will need to be able to retrieve all sensors within a given radius. I will create a \texttt{SensorRepository} port for this. Remember, a \texttt{Repository} is generally a port which can perform CRUD operations on an entity against a data storage (e.g. database), and the \texttt{Read} operation may optionally take filter parameters, like location and radius. Alternatively, I would define a dedicated port just for this use case.
+    \item My \texttt{Service} class will need to be able to poll the real sensors for data. The \texttt{Sensor} entity is just a \textit{representation} of a real sensor somewhere out in the ocean. The domain is isolated from the outside world, and therefore nothing in the domain can access the outside world, or more specifically, my \texttt{Sensor} entity cannot access the real world sensor. Instead, I need a port to represent the ability to poll the real sensor for data. I will call this port \texttt{SensorDriver}. There will be multiple adapters, which can connect to the real sensors.
+    \item Because I have different types of sensors, based on the \texttt{Sensor}'s \texttt{SensorType}, I there will be a specific adapter of the \texttt{SensorDriver} port for each sensor type. I need a way to figure out which adapter to use. Here comes an interesting problem. I have multiple adapters to the same port, the \texttt{SensorDriver} port. How do I know which adapter to use? I am going to introduce a \texttt{SensorDriverFactory} port, which will be responsible for creating the correct adapter based on the \texttt{SensorType}.
+    \item I also need to expose the use case through a port, so I create an interface for the service class, let's call it \texttt{TriangulateKaijuPositionUseCase}.
+\end{enumerate}
+
+\subsubsection{Inbound Adapters}
+
+We need access to the system, so we can execute the use case. I will create a Web API endpoint for this, but it could also be a CLI action, or a GUI button, or a message consumer, or something else. This is a technical detail, and therefore placed outside the core. And also less interesting to write about. So, let's just say I have a Web API endpoint, which will be responsible for invoking the use case.
+
+\subsubsection{Outbound Adapters}
+
+These adapters provide access to the outside world. Either so my service class can send data out of the system, or pull data into the system.
+
+\begin{enumerate}
+    \item I need an adapter for the \texttt{SensorRepository} port. Let's assume several use cases need to execute CRUD operations on sensor entities, so there is already an adapter for this port.
+    \item I need an adapter for the \texttt{SensorDriver} port. Actually, as I mentioned earlier, I need multiple adapters for this port, one for each sensor type. Different sensor types may require different protocols to communicate with the real sensor.
+    \item I need an adapter for the \texttt{SensorDriverFactory} port. It will have a method for creating the correct adapter based on an input of a \texttt{SensorType}. It then figures out which adapter to create, and return it. Remember, all my SensorDriverAdapters will implement the \texttt{SensorDriver} port, so they will all have the same interface.
+\end{enumerate}
+
+I just need to make sure it is clear, why the \texttt{SensorDriverFactory} adapter is needed, and why it is located here in the outbound adapters. My \texttt{Sensor} entity just knows its type, but the specifics about how to connect to the real sensor is not part of the domain, we use the \texttt{SensorDriverAdapters} to do that. And these are located in the outbound adapters. 
+
+My Factory needs to know about the concrete adapters, and because the Application hex cannot know about the Outbound hex, the Factory \textit{must} be placed in the Outbound hex, where it can reference, and thereby create, the concrete adapters. My Application hex still needs access to this adapter, so we define the port in the Application hex.
+
+These are the classes involved, so let's now look at the package layout.
+
+\subsection{Package layout}
+
+For this example I use the layered organization of the application hex, that is, separate sub-packages for \texttt{inboundports}, \texttt{outboundports}, and \texttt{services}. The outbound ports are further grouped by category, so that repository ports and sensor driver ports each live in their own sub-package. Domain types and adapters follow the same overall structure introduced earlier in this chapter.
+
+\needspace{30\baselineskip}
+\begin{alltt}\small
+    \foldericon\ src/
+    |-- \foldericon\ application/
+    |   |-- \foldericon\ inboundports/
+    |   |   `-- \fileicon\ TriangulateKaijuPositionUseCase.java
+    |   |-- \foldericon\ outboundports/
+    |   |   |-- \foldericon\ repositories/
+    |   |   |   `-- \fileicon\ SensorRepository.java
+    |   |   `-- \foldericon\ sensordrivers/
+    |   |       |-- \fileicon\ SensorDriver.java
+    |   |       `-- \fileicon\ SensorDriverFactory.java
+    |   `-- \foldericon\ services/
+    |       |-- \fileicon\ TriangulateKaijuPositionService.java
+    |       `-- \fileicon\ EstimatedArea.java
+    |-- \foldericon\ domain/
+    |   |-- \fileicon\ Sensor.java
+    |   |-- \fileicon\ SensorId.java
+    |   |-- \fileicon\ SensorType.java
+    |   |-- \fileicon\ Location.java
+    |   |-- \fileicon\ Longitude.java
+    |   `-- \fileicon\ Latitude.java
+    |-- \foldericon\ inboundadapters/
+    |   `-- \foldericon\ web/
+    |       `-- \fileicon\ KaijuController.java
+    `-- \foldericon\ outboundadapters/
+        |-- \foldericon\ persistence/
+        |   `-- \fileicon\ JpaSensorRepositoryAdapter.java
+        `-- \foldericon\ sensordrivers/
+            |-- \fileicon\ AcousticSensorDriverAdapter.java
+            |-- \fileicon\ RadiationSensorDriverAdapter.java
+            |-- \fileicon\ SeismicSensorDriverAdapter.java
+            |-- \fileicon\ SensorDriverFactoryAdapter.java
+            `-- \fileicon\ ThermalSensorDriverAdapter.java
+\end{alltt}
+
+
+
+Notice how the \texttt{SensorDriverFactoryAdapter} sits next to the concrete \texttt{SensorDriver} adapters in \texttt{outboundadapters/sensordrivers/}, while its port \texttt{SensorDriverFactory} stays in \texttt{application/ outboundports/sensordrivers/}. The factory must be able to reference each concrete adapter to instantiate the right one, which is only allowed on the outbound side. The next subsection shows how these classes relate to each other.
+
+\subsection{Class diagram}
+
+
+\subsection{Implementation}
+
+
 
 \section{Testing Across the Hexagon Boundary}
 \label{sec:hexagonal_testing}
