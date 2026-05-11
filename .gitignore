@@ -1,2 +1,4 @@
-out/
+out/*
 *.pdf
+!out/
+!out/main.pdf
