@@ -1,17 +1,24 @@
 \chapter{Hexagonal Architecture}
 \label{ch:hexagonal}
 
-Hexagonal Architecture, also known as \textit{Ports and Adapters}, was introduced by Alistair Cockburn to protect application behavior from infrastructure concerns.\autocite{cockburn2005hexagonal} The key idea is simple: we keep application logic in the center, and let external technologies connect through explicit boundaries. These boundaries are called \textit{ports}, and are generally just interfaces in your code. A modern introduction with practical examples is provided by Huttunen.\autocite{huttunen2026hexagonal}
+Hexagonal Architecture, also known as \textit{Ports and Adapters}, was introduced by Alistair Cockburn to protect application behavior from infrastructure concerns.\autocite{cockburn2005hexagonal} The key idea is simple: we keep application logic in the center, and let external technologies connect through explicit boundaries. These boundaries are called \textit{ports}, and are generally just interfaces in your code. A modern introduction with practical examples is provided by Huttunen, and has inspired parts of this chapter.\autocite{huttunen2026hexagonal}
+
+In short, the point of hexagonal architecture is to keep a primary focus on the business logic, and allow external technologies to "plug in" to the core system, through interfaces. It is a "solve the business problem"-first approach, rather than a "technology"-first approach.
+
+Whether the system is activated through a GUI, a Web API, a CLI application, or something else, is considered a technical "detail" of the system.
+
+Whether data is stored in a database, a file, or something else, is considered a technical "detail" of the system.
 
 \section{Why We Use Hexagonal Architecture}
 \label{sec:hexagonal_why}
 
-Many systems start in a layered style, but business rules often leak into controllers, ORMs, and SDK-specific code. Basically just places where it does not belong. This coupling makes change expensive: replacing persistence technology, adding a new interface, or testing behavior can require touching several technical layers.
+Many systems start in a layered style, but business rules often leak into controllers, persistence code, ORMs, and other technological details. Basically just places where it does not belong. This coupling makes change expensive: replacing persistence technology, adding a new interface, or testing behavior can require touching several technical layers, even if we just want to verify the core business logic is working as expected.
 
-Similarly to a 3-layered architecture, we want to separate the concerns of the application into different parts.
+Similarly to a 3-layered architecture, we want to separate the concerns of the application into different parts. We just approach it slightly differently.
 
-Hexagonal architecture addresses this by separating concerns into an \textit{inside} and an \textit{outside}. The inside contains the behavior we care about, while the outside contains delivery and infrastructure details. Comparing to the 3-layered architecture, the presentation and persistence will be considered the "outside" of the application.
+Hexagonal architecture addresses this by separating concerns into an \textit{inside} and an \textit{outside}. The inside contains the behavior we care about, while the outside contains delivery and infrastructure details. Comparing to the 3-layered architecture, the presentation and persistence will be considered the "outside" of the application. We start with the core hexagon, see Figure~\ref{fig:hexagonal_core_only}.
 
+\needspace{16\baselineskip}
 \begin{figure}[htbp]
     \centering
     \input{assets/hex_step1_purpose_core_only}
@@ -22,7 +29,8 @@ Hexagonal architecture addresses this by separating concerns into an \textit{ins
 \subsection{Purpose of the Inner Hexagon}
 \label{sec:hexagonal_inner_purpose}
 
-The hexagon is a visual metaphor, not a geometric requirement. Cockburn has said it was simply a shape that was not yet associated with anything in software architecture. It reminds us that the core should be reachable from many directions, or input devices, without being rewritten for each one. Whether requests come from a GUI, a Web API, a CLI application, a batch job, or an automated test, they should trigger the same use-case behavior.
+The hexagon is a visual metaphor, not a geometric requirement (which probably would not make sense). Cockburn has said it was simply a shape that was not yet associated with anything in software architecture. It reminds us that the core should be reachable from many directions, or input devices, without being rewritten for each one. Whether requests come from a GUI, a Web API, a CLI application, a batch job, or an automated test, they should trigger the same use-case behavior.
+
 
 \section{Step 1: Start with Application Logic}
 \label{sec:hexagonal_step1}
@@ -69,10 +77,14 @@ The initial core can be expressed as a use-case-focused Java API and service imp
 
 First we need the "entry" interface, i.e. the port that will be used by the driving adapters to invoke the use case. It declares a piece of behaviour the core can execute.
 
-\needspace{5\baselineskip}
+\needspace{7\baselineskip}
 \begin{ridercode}{Java}
 public interface ConfirmKaijuDetectionPort {
-    KaijuId confirmDetection(ConfirmKaijuDetectionCommand command);
+
+    KaijuId confirmDetection(
+            ConfirmKaijuDetectionCommand command
+        );
+
 }
 \end{ridercode}
 
@@ -82,7 +94,8 @@ There is also a second output port, \texttt{PublishKaijuConfirmedPort}, implemen
 
 \needspace{16\baselineskip}
 \begin{ridercode}{Java}
-public final class ConfirmKaijuDetectionService implements ConfirmKaijuDetectionPort {
+public final class ConfirmKaijuDetectionService implements ConfirmKaijuDetectionPort 
+{
     private final LoadBreachPort loadBreachPort;
     private final SaveKaijuPort saveKaijuPort;
     private final PublishKaijuConfirmedPort publishKaijuConfirmedPort;
@@ -90,7 +103,10 @@ public final class ConfirmKaijuDetectionService implements ConfirmKaijuDetection
     // Constructor omitted for brevity.
 
     @Override
-    public KaijuId confirmDetection(ConfirmKaijuDetectionCommand command) {
+    public KaijuId confirmDetection(
+            ConfirmKaijuDetectionCommand command
+        ) 
+    {
         Optional<Breach> breach = loadBreachPort
                 .loadById(command.originBreachId())
                 .orThrow();

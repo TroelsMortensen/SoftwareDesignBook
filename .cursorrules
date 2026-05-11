@@ -29,3 +29,4 @@ public interface PlaceOrderPort {
 ```
 - When referencing patterns or practices, use the \todo{text here} LaTeX command to add a comment about cross-references to be added later.
 - When coming up with examples, use the Case.md file to get ideas. 
+- All code examples should be formatted according to the CodeFormattingRules.md file.

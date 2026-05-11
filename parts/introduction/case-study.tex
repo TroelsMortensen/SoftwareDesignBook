@@ -1,13 +1,17 @@
-\section{Case Study Domain Overview}
+\chapter{Case Study Domain Overview}
+
 \label{sec:case_study_domain_overview}
 
-Throughout this book, we use a single running case study called \textit{Abyssal Watch}. The setting is a near-future world where deep-ocean Breaches are monitored continuously because they can produce large biological anomalies known as Kaiju. The operational challenge is not only to detect anomalies, but to coordinate people, vessels, and sensing infrastructure under uncertain conditions and intermittent connectivity.
+Throughout this book, we use a single running case study called \textit{Abyssal Watch}. The setting is a near-future world where deep-ocean Breaches to other dimensionsare monitored continuously because they can produce large biological anomalies, known as Kaiju (yes, clearly inspired by Pacific Rim, and probably other lore I am not familiar with). 
 
-The Abyssal Watch initiative operates through Command Carriers that deploy Scout Vessels, collect Observations, and oversee Missions in assigned sectors. Some operations are routine surveys, while others become high-pressure tracking missions when a Kaiju signature emerges. This gives us a domain with clear responsibilities, constrained resources, and safety-critical decisions. As a result, it is a useful foundation for discussing boundaries, interactions, trade-offs, and design decisions across multiple architectural styles.
+The operational challenge is not only to detect anomalies, but to coordinate people, vessels, and sensing infrastructure under uncertain conditions and intermittent connectivity.
 
-In practical terms, we will revisit the same domain from different viewpoints: domain modeling, decomposition, data flow, integration, testing strategy, and evolutionary design. Keeping one consistent context helps us focus on architectural reasoning rather than re-learning a new problem in each chapter.
+The \textit{Abyssal Watch} initiative operates through Command Carriers that deploy Scout Vessels, collect Observations, and oversee Missions in assigned sectors. Some operations are routine surveys, while others become high-pressure tracking missions when a Kaiju signature emerges from a Breach. This gives us a domain with plenty of possibilies and I can create all kinds of interesting examples and scenarios. As a result, it is a useful foundation for discussing boundaries, interactions, trade-offs, and design decisions across multiple architectural styles.
 
-\subsection{Domain at a Glance}
+In practical terms, we will revisit the same domain from different viewpoints: domain modeling, decomposition, data flow, integration, testing strategy, and various design strategies. Keeping one consistent context helps us focus on architectural reasoning rather than re-learning a new problem in each chapter.
+
+\section{Domain at a Glance}
+
 \label{sec:case_study_domain_at_a_glance}
 
 The core domain entities are intentionally small and stable:
