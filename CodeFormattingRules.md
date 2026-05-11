@@ -106,3 +106,30 @@ For each line/snippet, ask:
 3. Will this render cleanly with line numbers in the PDF box?
 4. Are logical steps separated with blank lines?
 5. Would a new reader parse this in one pass?
+
+## 13) Edge Cases Discovered During Chapter Formatting
+
+- Apply annotation rules consistently:
+  - Keep each annotation on its own line above the target declaration.
+  - If an annotation has a long argument list, wrap those arguments
+    vertically using the same call-argument rules.
+- For method signatures with a single annotated parameter:
+  - If the line approaches soft max, force multiline signature formatting.
+  - Keep parameter annotation with its parameter line.
+- Apply chain-wrapping rules in all contexts, not only assignments:
+  - Return statements
+  - Assertions in tests (`assertTrue`, `assertThat`, etc.)
+  - Nested expressions where chains appear
+- Keep Allman brace style even for very short declarations:
+  - Small interfaces
+  - Small classes
+  - Records and compact educational snippets
+- Add explicit record formatting rules:
+  - If a record header is non-trivial, place one component per line.
+  - Keep closing `)` on its own line before `{}`.
+- Extend generic wrapping guidance to generic method signatures:
+  - For long type parameter lists, break at commas inside `<...>`.
+  - Keep the generic and method header visually grouped.
+- For pedagogical snippets, enforce conceptual chunking in methods:
+  - Separate domain phases with blank lines even if code is short.
+  - Use brief phase comments only when they improve reader scanning.

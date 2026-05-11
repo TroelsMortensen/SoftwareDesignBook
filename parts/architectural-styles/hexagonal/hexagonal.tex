@@ -79,11 +79,12 @@ First we need the "entry" interface, i.e. the port that will be used by the driv
 
 \needspace{7\baselineskip}
 \begin{ridercode}{Java}
-public interface ConfirmKaijuDetectionPort {
+public interface ConfirmKaijuDetectionPort
+{
 
     KaijuId confirmDetection(
-            ConfirmKaijuDetectionCommand command
-        );
+        ConfirmKaijuDetectionCommand command
+    );
 
 }
 \end{ridercode}
@@ -94,26 +95,36 @@ There is also a second output port, \texttt{PublishKaijuConfirmedPort}, implemen
 
 \needspace{16\baselineskip}
 \begin{ridercode}{Java}
-public final class ConfirmKaijuDetectionService implements ConfirmKaijuDetectionPort 
+public final class ConfirmKaijuDetectionService
+    implements ConfirmKaijuDetectionPort
 {
     private final LoadBreachPort loadBreachPort;
     private final SaveKaijuPort saveKaijuPort;
-    private final PublishKaijuConfirmedPort publishKaijuConfirmedPort;
-    
+    private final PublishKaijuConfirmedPort
+        publishKaijuConfirmedPort;
+
     // Constructor omitted for brevity.
 
     @Override
     public KaijuId confirmDetection(
-            ConfirmKaijuDetectionCommand command
-        ) 
+        ConfirmKaijuDetectionCommand command
+    )
     {
         Optional<Breach> breach = loadBreachPort
-                .loadById(command.originBreachId())
-                .orThrow();
+            .loadById(command.originBreachId())
+            .orThrow();
 
-        Kaiju kaiju = Kaiju.confirmed(command.codename(), command.classification(), breach.id());
+        Kaiju kaiju = Kaiju.confirmed(
+            command.codename(),
+            command.classification(),
+            breach.id()
+        );
+
         saveKaijuPort.save(kaiju);
-        publishKaijuConfirmedPort.publishConfirmed(kaiju.id(), breach.id());
+
+        publishKaijuConfirmedPort
+            .publishConfirmed(kaiju.id(), breach.id());
+
         return kaiju.id();
     }
 }
@@ -165,18 +176,27 @@ The driving adapter talks only to the input port and maps transport-specific mod
 \begin{ridercode}{Java}
 @RestController
 @RequestMapping("/kaiju-detections")
-public class KaijuController {
+public class KaijuController
+{
     // Dependency injected.
-    private final ConfirmKaijuDetectionPort confirmKaijuDetectionPort;
+    private final ConfirmKaijuDetectionPort
+        confirmKaijuDetectionPort;
 
     @PostMapping
-    public ResponseEntity<String> confirm(@RequestBody KaijuDetectionRequest request) {
+    public ResponseEntity<String> confirm(
+        @RequestBody KaijuDetectionRequest request
+    )
+    {
         ConfirmKaijuDetectionCommand command =
-                new ConfirmKaijuDetectionCommand(
-                        request.codename(),
-                        request.classification(),
-                        request.originBreachId());
-        KaijuId kaijuId = confirmKaijuDetectionPort.confirmDetection(command);
+            new ConfirmKaijuDetectionCommand(
+                request.codename(),
+                request.classification(),
+                request.originBreachId()
+            );
+
+        KaijuId kaijuId = confirmKaijuDetectionPort
+            .confirmDetection(command);
+
         return ResponseEntity.accepted().body(kaijuId.value());
     }
 }
@@ -236,7 +256,8 @@ Let's start with the first output port, \texttt{LoadBreachPort}. It is used to l
 
 \needspace{4\baselineskip}
 \begin{ridercode}{Java}
-public interface LoadBreachPort {
+public interface LoadBreachPort
+{
     Optional<Breach> loadById(BreachId breachId);
 }
 \end{ridercode}
@@ -245,7 +266,8 @@ Then the next port to save a Kaiju entity to the storage (database or other stor
 
 \needspace{4\baselineskip}
 \begin{ridercode}{Java}
-public interface SaveKaijuPort {
+public interface SaveKaijuPort
+{
     void save(Kaiju kaiju);
 }
 \end{ridercode}
@@ -254,12 +276,15 @@ And an implementation of the latter port. Here we use \texttt{Spring Data JPA} t
 
 \needspace{8\baselineskip}
 \begin{ridercode}{Java}
-public final class JpaKaijuRepositoryAdapter implements SaveKaijuPort {
-    // Dependency injected.    
-    private final SpringDataKaijuRepository repository; 
+public final class JpaKaijuRepositoryAdapter
+    implements SaveKaijuPort
+{
+    // Dependency injected.
+    private final SpringDataKaijuRepository repository;
 
     @Override
-    public void save(Kaiju kaiju) {
+    public void save(Kaiju kaiju)
+    {
         repository.save(KaijuEntity.fromDomain(kaiju));
     }
 }
@@ -274,30 +299,37 @@ Mapping code belongs in adapters, because adapters translate between outside mod
 
 \needspace{8\baselineskip}
 \begin{ridercode}{Java}
-public record KaijuDetectionRequest(String codename,
-                                    KaijuClassification classification,
-                                    BreachId originBreachId) {}
+public record KaijuDetectionRequest(
+    String codename,
+    KaijuClassification classification,
+    BreachId originBreachId
+) {}
 
-public record ConfirmKaijuDetectionCommand(String codename,
-                                           KaijuClassification classification,
-                                           BreachId originBreachId) {}
+public record ConfirmKaijuDetectionCommand(
+    String codename,
+    KaijuClassification classification,
+    BreachId originBreachId
+) {}
 
 ConfirmKaijuDetectionCommand command =
-        new ConfirmKaijuDetectionCommand(
-                request.codename(),
-                request.classification(),
-                request.originBreachId());
+    new ConfirmKaijuDetectionCommand(
+        request.codename(),
+        request.classification(),
+        request.originBreachId()
+    );
 \end{ridercode}
 
 \needspace{13\baselineskip}
 \begin{ridercode}{Java}
 @Entity
-public class KaijuEntity {
+public class KaijuEntity
+{
     @Id
     private String id;
     private String codename;
 
-    public static KaijuEntity fromDomain(Kaiju kaiju) {
+    public static KaijuEntity fromDomain(Kaiju kaiju)
+    {
         KaijuEntity entity = new KaijuEntity();
         entity.id = kaiju.id().value();
         entity.codename = kaiju.codename();
@@ -702,7 +734,7 @@ Let's start with the inner most hexagon, the domain.
 
 \begin{enumerate}
     \item I need a domain entity to represent the \texttt{Sensor}. It will contain various values, and some of these will be represented by other classes. You will see in the code later.
-    \item To avoid \texttt{primitive obsession}, I am going to model this with a few other classes, like \texttt{Location}, \texttt{Longitude}, \texttt{Latitude}, \texttt{SensorId}, \texttt{SensorType}, and perhaps more.
+    \item To avoid \texttt{primitive obsession} \todoinref{add reference to primitive obsession}, I am going to model this with a few other classes, like \texttt{Location}, \texttt{Longitude}, \texttt{Latitude}, \texttt{SensorId}, \texttt{SensorType}, and perhaps more.
 \end{enumerate}
 
 \subsubsection{Application}
@@ -823,34 +855,34 @@ In Java, we can keep most behavior tests focused on the core. Here is an example
 \needspace{30\baselineskip}
 \begin{ridercode}{Java}
 @Test
-void confirmsDetectionAndPublishesEvent() {
+void confirmsDetectionAndPublishesEvent()
+{
     FakeLoadBreachPort loadPort = new FakeLoadBreachPort();
     FakeSaveKaijuPort savePort = new FakeSaveKaijuPort();
-    FakePublishKaijuConfirmedPort publishPort = 
-                        new FakePublishKaijuConfirmedPort();
+    FakePublishKaijuConfirmedPort publishPort =
+        new FakePublishKaijuConfirmedPort();
 
-    ConfirmKaijuDetectionService service = 
-                    new ConfirmKaijuDetectionService(
-                        loadPort,
-                        savePort,
-                        publishPort
-                    );
+    ConfirmKaijuDetectionService service =
+        new ConfirmKaijuDetectionService(
+            loadPort,
+            savePort,
+            publishPort
+        );
 
-    ConfirmKaijuDetectionCommand command = 
-                    new ConfirmKaijuDetectionCommand(
-                        "Leatherback",
-                        KaijuClassification.CATEGORY_III,
-                        new BreachId("B-01")
-                    );
-            
+    ConfirmKaijuDetectionCommand command =
+        new ConfirmKaijuDetectionCommand(
+            "Leatherback",
+            KaijuClassification.CATEGORY_III,
+            new BreachId("B-01")
+        );
+
     KaijuId id = service.confirmDetection(command);
 
     assertTrue(savePort.savedKaijuIds().contains(id));
 
     assertTrue(publishPort
-                .publishedKaijuIds()
-                .contains(command.originBreachId().value())
-                );
+        .publishedKaijuIds()
+        .contains(command.originBreachId().value()));
 }
 \end{ridercode}
 
