@@ -4,6 +4,8 @@ A practical, teaching-focused book on software architecture, design, architectur
 
 This repository contains source materials, examples, and a shared domain case study used across chapters and classroom sessions.
 
+The resulting pdf is available in the `out/` directory.
+
 ## Why this project exists
 
 This book is built from real teaching practice.
