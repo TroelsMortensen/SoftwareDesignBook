@@ -1,126 +1,130 @@
-\documentclass[11pt, fleqn, oneside, openany]{book}
+    \documentclass[11pt, fleqn, oneside, openany]{book}
 
-% --- 1. CORE PACKAGES ---
-\usepackage[utf8]{inputenc}
-\usepackage[T1]{fontenc}
-\usepackage[pdfpagelabels]{hyperref}
-\usepackage{graphicx}
-\usepackage{import}
-\usepackage[a4paper, margin=2.5cm]{geometry}
-\usepackage[backend=biber]{biblatex}
-\usepackage{xcolor}
-\usepackage{needspace}
-\usepackage{tikz}
-\usepackage{enumitem}
+    % --- 1. CORE PACKAGES ---
+    \usepackage[utf8]{inputenc}
+    \usepackage[T1]{fontenc}
+    \usepackage[pdfpagelabels]{hyperref}
+    \usepackage{graphicx}
+    \usepackage{import}
+    \usepackage[a4paper, margin=2.5cm]{geometry}
+    \usepackage[backend=biber]{biblatex}
+    \usepackage{needspace}
+    \usepackage{tikz}
+    \usepackage{enumitem}
 
-\usepackage{xcolor}
-\usepackage[colorinlistoftodos, prependcaption, textsize=tiny]{todonotes}
+    \usepackage{xcolor}
+    \usepackage[colorinlistoftodos, prependcaption, textsize=tiny]{todonotes}
 
-% Custom TODO for "Add Diagram" (Greenish)
-\newcommand{\tododiagram}[1]{\todo[color=teal!30, size=\scriptsize]{DIAGRAM: #1}}
+    % Custom TODO for "Add Diagram" (Greenish)
+    \newcommand{\tododiagram}[1]{\todo[color=teal!30, size=\scriptsize]{DIAGRAM: #1}}
 
-% Custom TODO for "In-book Reference" (Bluish)
-\newcommand{\todoinref}[1]{\todo[color=blue!20, size=\scriptsize]{IN-REF: #1}}
+    % Custom TODO for "In-book Reference" (Bluish)
+    \newcommand{\todoinref}[1]{\todo[color=blue!20, size=\scriptsize]{IN-REF: #1}}
 
-% Custom TODO for "External Reference" (Purpleish)
-\newcommand{\todoextref}[1]{\todo[color=violet!20, size=\scriptsize]{EXT-REF: #1}}
+    % Custom TODO for "External Reference" (Purpleish)
+    \newcommand{\todoextref}[1]{\todo[color=violet!20, size=\scriptsize]{EXT-REF: #1}}
 
-% Custom TODO for general "Fixes" (Yellow/Standard)
-\newcommand{\todofix}[1]{\todo[color=yellow!40, size=\scriptsize]{FIX: #1}}
+    % Custom TODO for general "Fixes" (Yellow/Standard)
+    \newcommand{\todofix}[1]{\todo[color=yellow!40, size=\scriptsize]{FIX: #1}}
 
-% Custom command for a big, inline TODO box that's easy to see
-\newcommand{\todobig}[1]{\todo[inline, color=red!20, size=\small]{#1}}
+    % Custom command for a big, inline TODO box that's easy to see
+    \newcommand{\todobig}[1]{\todo[inline, color=red!20, size=\small]{#1}}
 
-\usetikzlibrary{shapes.geometric, arrows}
-\usetikzlibrary{arrows.meta}
-\usetikzlibrary{calc}
+    \usetikzlibrary{shapes.geometric, arrows}
+    \usetikzlibrary{arrows.meta}
+    \usetikzlibrary{calc}
 
-% --- 2. COLORS (ReSharper Night) ---
-\definecolor{rs_bg}{RGB}{30, 30, 30}
-\definecolor{rs_text}{RGB}{220, 220, 220}
-\definecolor{rs_keyword}{RGB}{86, 156, 214}
-\definecolor{rs_type}{RGB}{78, 201, 176}
-\definecolor{rs_string}{RGB}{214, 157, 133}
-\definecolor{rs_comment}{RGB}{87, 166, 74}
-\definecolor{rs_linenos}{RGB}{43, 145, 175}
-\definecolor{rs_border}{RGB}{63, 63, 70}
+    % --- tree package structure rendering ---
 
-% --- 3. CODE STYLING (Listings) ---
-\usepackage{listings}
+    % --- 2. COLORS (ReSharper Night) ---
+    \definecolor{rs_bg}{RGB}{30, 30, 30}
+    \definecolor{rs_text}{RGB}{220, 220, 220}
+    \definecolor{rs_keyword}{RGB}{86, 156, 214}
+    \definecolor{rs_type}{RGB}{78, 201, 176}
+    \definecolor{rs_string}{RGB}{214, 157, 133}
+    \definecolor{rs_comment}{RGB}{87, 166, 74}
+    \definecolor{rs_linenos}{RGB}{43, 145, 175}
+    \definecolor{rs_border}{RGB}{63, 63, 70}
 
-\lstdefinestyle{rider_style}{
-    commentstyle=\color{rs_comment},
-    stringstyle=\color{rs_string},
-    basicstyle=\ttfamily\small\color{rs_text},
-    breakatwhitespace=false,
-    breaklines=true,
-    numbers=left,
-    numberstyle=\tiny\color{rs_linenos},
-    numbersep=10pt,
-    showstringspaces=false,
-    tabsize=4,
-    keywordstyle=\color{rs_keyword},
-    % Use ! for escaping to LaTeX - it's much safer than UTF-8 symbols like §
-    escapeinside={!}{!},
-    inputencoding=utf8,
-    extendedchars=true
-}
+    % --- 3. CODE STYLING (Listings) ---
+    \usepackage{listings}
 
-% --- 4. PRETTY BOXES (tcolorbox) ---
-\usepackage[most]{tcolorbox}
-\tcbuselibrary{listings}
+    \lstdefinestyle{rider_style}{
+        commentstyle=\color{rs_comment},
+        stringstyle=\color{rs_string},
+        basicstyle=\ttfamily\small\color{rs_text},
+        breakatwhitespace=false,
+        breaklines=true,
+        numbers=left,
+        numberstyle=\tiny\color{rs_linenos},
+        numbersep=10pt,
+        showstringspaces=false,
+        tabsize=4,
+        keywordstyle=\color{rs_keyword},
+        % Use ! for escaping to LaTeX - it's much safer than UTF-8 symbols like §
+        escapeinside={!}{!},
+        inputencoding=utf8,
+        extendedchars=true
+    }
 
-\newtcblisting{ridercode}[2][]{
-    enhanced,
-    arc=5pt,
-    boxrule=1pt,
-    colback=rs_bg,
-    colframe=rs_border,
-    left=22pt,
-    listing only,
-    listing engine=listings,
-    listing options={
-        style=rider_style,
-        language=#2
-    },
-    #1
-}
+    % --- 4. PRETTY BOXES (tcolorbox) ---
+    \usepackage[most]{tcolorbox}
+    \tcbuselibrary{listings}
 
-\addbibresource{references.bib}
+    \newtcblisting{ridercode}[2][]{
+        enhanced,
+        arc=5pt,
+        boxrule=1pt,
+        colback=rs_bg,
+        colframe=rs_border,
+        left=22pt,
+        listing only,
+        listing engine=listings,
+        listing options={
+            style=rider_style,
+            language=#2
+        },
+        #1
+    }
 
-% --- Folder layout helper ---
-\usepackage[T1]{fontenc}
-\usepackage[utf8]{inputenc}
-\usepackage{alltt}
-\usepackage{fontawesome} % works with pdflatex in most TeX distros
-\newcommand{\foldericon}{\faFolderO}
-\newcommand{\fileicon}{\faFileTextO}
+    \addbibresource{references.bib}
 
-% --- BOOK METADATA ---
-\title{Software - Architecture, Design, Test}
-\author{Troels Mortensen}
-\date{\today}
+    % --- Folder layout helper ---
+    \usepackage{alltt}
+    \usepackage{dirtree}
+    \usepackage{fontawesome5} % For better folder/file icons
 
-\begin{document}
+    \definecolor{folder_yellow}{RGB}{230, 190, 80}
 
-\maketitle
+    \newcommand{\foldericon}{\textcolor{folder_yellow}{\faFolder}}
+    \newcommand{\fileicon}{\faFile*[regular]} % Keep files standard text color
 
-\frontmatter
-\tableofcontents
-\listoftodos
-\clearpage
 
-\mainmatter
-\part{Introduction}
-\subimport{parts/introduction/}{overview}
-\subimport{parts/introduction/}{case-study}
+    % --- BOOK METADATA ---
+    \title{Software - Architecture, Design, Test}
+    \author{Troels Mortensen}
+    \date{\today}
 
-% \part{Architectural Styles}
-% \subimport{parts/architectural-styles/2-layered/}{2-layered}
-% \subimport{parts/architectural-styles/3-layered/}{3-layered}
-\subimport{parts/architectural-styles/hexagonal/}{hexagonal}
+    \begin{document}
 
-\backmatter
-\printbibliography
+    \maketitle
 
-\end{document}
+    \frontmatter
+    \tableofcontents
+    \listoftodos
+    \clearpage
+
+    \mainmatter
+    \part{Introduction}
+    \subimport{parts/introduction/}{overview}
+    \subimport{parts/introduction/}{case-study}
+
+    % \part{Architectural Styles}
+    % \subimport{parts/architectural-styles/2-layered/}{2-layered}
+    % \subimport{parts/architectural-styles/3-layered/}{3-layered}
+    \subimport{parts/architectural-styles/hexagonal/}{hexagonal}
+
+    \backmatter
+    \printbibliography
+
+    \end{document}

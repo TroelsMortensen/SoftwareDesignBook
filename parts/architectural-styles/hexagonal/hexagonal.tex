@@ -394,102 +394,134 @@ A package convention gives us a practical guardrail. We can often organize our c
 We generally have three parts to a hexagonal architecture: the core, the driving (inbound) adapters, and the driven (outbound) adapters. So, that's where we start: create three packages (or modules).
 
 \needspace{5\baselineskip}
-\begin{alltt}\small
-    \foldericon\ src/
-    |-- \foldericon\ application/
-    |-- \foldericon\ inboundadapters/
-    `-- \foldericon\ outboundadapters/
-\end{alltt}
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.8\textwidth}
+\dirtree{%
+.1 \foldericon\ src/.
+.2 \foldericon\ application/.
+.2 \foldericon\ inboundadapters/.
+.2 \foldericon\ outboundadapters/.
+}
+\end{minipage}
+\end{figure}
 
 Many applications, across many architectural styles, will actually have a similar package structure, perhaps just differently named. Sometimes the application is called "core", sometimes "services". The same responsibility has been named different things over the years.
 
 Next, we also need the domain. We can place it inside the application package, to represent that the domain hex is inside the application hex. Or, we can put it in a separate package. Below, I will show the latter:
 
 \needspace{6\baselineskip}
-\begin{alltt}\small
-    \foldericon\ src/
-    |-- \foldericon\ application/
-    |-- \foldericon\ domain/
-    |-- \foldericon\ inboundadapters/
-    `-- \foldericon\ outboundadapters/
-\end{alltt}
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.8\textwidth}
+\dirtree{%
+.1 \foldericon\ src/.
+.2 \foldericon\ application/.
+.2 \foldericon\ domain/.
+.2 \foldericon\ inboundadapters/.
+.2 \foldericon\ outboundadapters/.
+}
+\end{minipage}
+\end{figure}
 
 Then, we have to further organize the application hex, or package. As mentioned earlier, I will show two approaches: layers and feature-folders.
 
 \subsection{Application Layers}
 
-Let's start with layers. The application hex consists of service classes (the classes performing the use cases), inbound ports (the interfaces exposing the use cases to the outside world), and outbound ports (the interfaces defining the capabilities the core needs from the outside world). If we go with the layered approach, we divide files by their responsibility, or category. That means three sub-packages:
+Let's start with layers. The application hex consists of service classes (the classes performing the use cases), inbound ports (the interfaces exposing the use cases to the outside world), and outbound ports (the interfaces defining the capabilities the core needs from the outside world). If we go with the layered approach, we group files by their type of responsibility, or category. That means three sub-packages:
 
 \needspace{10\baselineskip}
-\begin{alltt}\small
-    \foldericon\ src/
-    |-- \foldericon\ application/
-    |   |-- \foldericon\ inboundports/
-    |   |-- \foldericon\ outboundports/
-    |   `-- \foldericon\ services/
-    |-- \foldericon\ domain/
-    |-- \foldericon\ inboundadapters/
-    `-- \foldericon\ outboundadapters/
-\end{alltt}
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.8\textwidth}
+\dirtree{%
+.1 \foldericon\ src/.
+.2 \foldericon\ application/.
+.3 \foldericon\ inboundports/.
+.3 \foldericon\ outboundports/.
+.3 \foldericon\ services/.
+.2 \foldericon\ domain/.
+.2 \foldericon\ inboundadapters/.
+.2 \foldericon\ outboundadapters/.
+}
+\end{minipage}
+\end{figure}
 
 This is the basics. Your application may need other kinds of classes, which do not fit into one of the three categories. 
 
-I will not go into too details about the adapters here. In your \texttt{inboundadapters} package, you will have classes that let's the outside world interact with the application. This could be a Web API controller, a CLI handler, a GUI controller, a message consumer, or something else. Let's just say that our application exposes a REST API, and also has a GUI. I will make two sub-packages in the \texttt{inboundadapters} package: \texttt{web} and \texttt{gui}.
+I will not go into too precise details about the adapters here. In your \texttt{inboundadapters} package, you will have classes that lets the outside world interact with the application. This could be a Web API controller, a CLI handler, a GUI controller, a message consumer, or something else. Let's just say that our application exposes a REST API, and also has a GUI. I will make two sub-packages in the \texttt{inboundadapters} package: \texttt{web} and \texttt{gui}.
 
 \needspace{10\baselineskip}
-\begin{alltt}\small
-    \foldericon\ src/
-    |-- \foldericon\ application/
-    |   |-- \foldericon\ inboundports/
-    |   |-- \foldericon\ outboundports/
-    |   `-- \foldericon\ services/
-    |-- \foldericon\ domain/
-    |-- \foldericon\ inboundadapters/
-    |   |-- \foldericon\ web/
-    |   `-- \foldericon\ gui/
-    `-- \foldericon\ outboundadapters/
-\end{alltt}
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.8\textwidth}
+\dirtree{%
+.1 \foldericon\ src/.
+.2 \foldericon\ application/.
+.3 \foldericon\ inboundports/.
+.3 \foldericon\ outboundports/.
+.3 \foldericon\ services/.
+.2 \foldericon\ domain/.
+.2 \foldericon\ inboundadapters/.
+.3 \foldericon\ web/.
+.3 \foldericon\ gui/.
+.2 \foldericon\ outboundadapters/.
+}
+\end{minipage}
+\end{figure}
 
-What about outbound adapters? Again, we have many categories, try to organize your code by your needs. For example, you may have a package for \texttt{persistence}, \texttt{events}, \texttt{notifications}, \texttt{messaging}, \texttt{email}, \texttt{logging}, \texttt{sensordrivers}, \texttt{externalAPIs}, etc. Let's just add a sub-package for \texttt{persistence} and \texttt{email}:
+What about outbound adapters? Again, we have many categories, try to organize your code by your needs. For example, you may have packages for \texttt{persistence}, \texttt{events}, \texttt{notifications}, \texttt{messaging}, \texttt{email}, \texttt{logging}, \texttt{sensordrivers}, \texttt{externalAPIs}, etc. Let's just add a sub-package for \texttt{persistence} and \texttt{email}:
 
 \needspace{12\baselineskip}
-\begin{alltt}\small
-    \foldericon\ src/
-    |-- \foldericon\ application/
-    |   |-- \foldericon\ inboundports/
-    |   |-- \foldericon\ outboundports/
-    |   `-- \foldericon\ services/
-    |-- \foldericon\ domain/
-    |-- \foldericon\ inboundadapters/
-    |   |-- \foldericon\ gui/
-    |   `-- \foldericon\ web/
-    `-- \foldericon\ outboundadapters/
-        |-- \foldericon\ email/
-        `-- \foldericon\ persistence/
-\end{alltt}
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.8\textwidth}
+\dirtree{%
+.1 \foldericon\ src/.
+.2 \foldericon\ application/.
+.3 \foldericon\ inboundports/.
+.3 \foldericon\ outboundports/.
+.3 \foldericon\ services/.
+.2 \foldericon\ domain/.
+.2 \foldericon\ inboundadapters/.
+.3 \foldericon\ gui/.
+.3 \foldericon\ web/.
+.2 \foldericon\ outboundadapters/.
+.3 \foldericon\ email/.
+.3 \foldericon\ persistence/.
+}
+\end{minipage}
+\end{figure}
 
 Further subdivision of your application is of course possible, and as the capabilities of the application grow, you will likely need to add more sub-packages. Here, you will have to decide what is the best way to organize your code.
 
 For example, you may want a group of \texttt{repositories} ports, which are used to perform CRUD operations of entities on the database. You make a package for that: \texttt{outboundports/repositories}. Or you have ports for messaging, or sensor drivers. So, we can update the package structure to:
 
 \needspace{15\baselineskip}
-\begin{alltt}\small
-    \foldericon\ src/
-    |-- \foldericon\ application/
-    |   |-- \foldericon\ inboundports/
-    |   |-- \foldericon\ outboundports/
-    |   |   |-- \foldericon\ repositories/
-    |   |   |-- \foldericon\ messaging/
-    |   |   `-- \foldericon\ sensordrivers/
-    |   `-- \foldericon\ services/
-    |-- \foldericon\ domain/
-    |-- \foldericon\ inboundadapters/
-    |   |-- \foldericon\ gui/
-    |   `-- \foldericon\ web/
-    `-- \foldericon\ outboundadapters/
-        |-- \foldericon\ email/
-        `-- \foldericon\ persistence/
-\end{alltt}
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.8\textwidth}
+\dirtree{%
+.1 \foldericon\ src/.
+.2 \foldericon\ application/.
+.3 \foldericon\ inboundports/.
+.3 \foldericon\ outboundports/.
+.4 \foldericon\ repositories/.
+.4 \foldericon\ messaging/.
+.4 \foldericon\ sensordrivers/.
+.3 \foldericon\ services/.
+.2 \foldericon\ domain/.
+.2 \foldericon\ inboundadapters/.
+.3 \foldericon\ gui/.
+.3 \foldericon\ web/.
+.2 \foldericon\ outboundadapters/.
+.3 \foldericon\ email/.
+.3 \foldericon\ persistence/.
+}
+\end{minipage}
+\end{figure}
+
+    
 
 \subsection{Feature Folders}
 
@@ -498,25 +530,30 @@ Another way to organize the application is to use feature folders. In the previo
 Here is an example, I have just updated the \texttt{application} package to use feature folders:
 
 \needspace{12\baselineskip}
-\begin{alltt}\small
-    \foldericon\ src/
-    |-- \foldericon\ application/
-    |   `-- \foldericon\ features/
-    |       |-- \foldericon\ confirmkaijudetection/
-    |       |   |-- \fileicon\ ConfirmKaijuDetectionInboundPort.java
-    |       |   |-- \fileicon\ ConfirmKaijuDetectionService.java
-    |       |   |-- \fileicon\ KaijuConfirmedEvent.java
-    |       |   `-- \fileicon\ ConfirmKaijuDetectionOutboundPort.java
-    |       |-- \foldericon\ registerkaiju/
-    |       `-- \foldericon\ triangulatekaiju/
-    |-- \foldericon\ domain/
-    |-- \foldericon\ inboundadapters/
-    |   |-- \foldericon\ gui/
-    |   `-- \foldericon\ web/
-    `-- \foldericon\ outboundadapters/
-        |-- \foldericon\ email/
-        `-- \foldericon\ persistence/
-\end{alltt}
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.8\textwidth}
+\dirtree{%
+.1 \foldericon\ src/.
+.2 \foldericon\ application/.
+.3 \foldericon\ features/.
+.4 \foldericon\ confirmkaijudetection/.
+.5 \fileicon\ ConfirmKaijuDetectionInboundPort.java.
+.5 \fileicon\ ConfirmKaijuDetectionService.java.
+.5 \fileicon\ KaijuConfirmedEvent.java.
+.5 \fileicon\ ConfirmKaijuDetectionOutboundPort.java.
+.4 \foldericon\ registerkaiju/.
+.4 \foldericon\ triangulatekaiju/.
+.2 \foldericon\ domain/.
+.2 \foldericon\ inboundadapters/.
+.3 \foldericon\ gui/.
+.3 \foldericon\ web/.
+.2 \foldericon\ outboundadapters/.
+.3 \foldericon\ email/.
+.3 \foldericon\ persistence/.
+}
+\end{minipage}
+\end{figure}
 
 Notice how each feature package clearly describes the feature through its name. It then contains whatever classes and interfaces are needed to implement the feature. The adapters, of course, are still placed outside. Just pretend the other feature packages also contains relevant files.
 
@@ -687,41 +724,46 @@ These are the classes involved, so let's now look at the package layout.
 
 For this example I use the layered organization of the application hex, that is, separate sub-packages for \texttt{inboundports}, \texttt{outboundports}, and \texttt{services}. The outbound ports are further grouped by category, so that repository ports and sensor driver ports each live in their own sub-package. Domain types and adapters follow the same overall structure introduced earlier in this chapter.
 
-\needspace{30\baselineskip}
-\begin{alltt}\small
-    \foldericon\ src/
-    |-- \foldericon\ application/
-    |   |-- \foldericon\ inboundports/
-    |   |   `-- \fileicon\ TriangulateKaijuPositionUseCase.java
-    |   |-- \foldericon\ outboundports/
-    |   |   |-- \foldericon\ repositories/
-    |   |   |   `-- \fileicon\ SensorRepository.java
-    |   |   `-- \foldericon\ sensordrivers/
-    |   |       |-- \fileicon\ SensorDriver.java
-    |   |       `-- \fileicon\ SensorDriverFactory.java
-    |   `-- \foldericon\ services/
-    |       |-- \fileicon\ TriangulateKaijuPositionService.java
-    |       `-- \fileicon\ EstimatedArea.java
-    |-- \foldericon\ domain/
-    |   |-- \fileicon\ Sensor.java
-    |   |-- \fileicon\ SensorId.java
-    |   |-- \fileicon\ SensorType.java
-    |   |-- \fileicon\ Location.java
-    |   |-- \fileicon\ Longitude.java
-    |   `-- \fileicon\ Latitude.java
-    |-- \foldericon\ inboundadapters/
-    |   `-- \foldericon\ web/
-    |       `-- \fileicon\ KaijuController.java
-    `-- \foldericon\ outboundadapters/
-        |-- \foldericon\ persistence/
-        |   `-- \fileicon\ JpaSensorRepositoryAdapter.java
-        `-- \foldericon\ sensordrivers/
-            |-- \fileicon\ AcousticSensorDriverAdapter.java
-            |-- \fileicon\ RadiationSensorDriverAdapter.java
-            |-- \fileicon\ SeismicSensorDriverAdapter.java
-            |-- \fileicon\ SensorDriverFactoryAdapter.java
-            `-- \fileicon\ ThermalSensorDriverAdapter.java
-\end{alltt}
+\needspace{25\baselineskip}
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.8\textwidth} % Keeps the lines tight
+\dirtree{%
+.1 \foldericon\ src/.
+.2 \foldericon\ application/.
+.3 \foldericon\ inboundports/.
+.4 \fileicon\ TriangulateKaijuPositionUseCase.java.
+.3 \foldericon\ outboundports/.
+.4 \foldericon\ repositories/.
+.5 \fileicon\ SensorRepository.java.
+.4 \foldericon\ sensordrivers/.
+.5 \fileicon\ SensorDriver.java.
+.5 \fileicon\ SensorDriverFactory.java.
+.3 \foldericon\ services/.
+.4 \fileicon\ TriangulateKaijuPositionService.java.
+.4 \fileicon\ EstimatedArea.java.
+.2 \foldericon\ domain/.
+.3 \fileicon\ Sensor.java.
+.3 \fileicon\ SensorId.java.
+.3 \fileicon\ SensorType.java.
+.3 \fileicon\ Location.java.
+.3 \fileicon\ Longitude.java.
+.3 \fileicon\ Latitude.java.
+.2 \foldericon\ inboundadapters/.
+.3 \foldericon\ web/.
+.4 \fileicon\ KaijuController.java.
+.2 \foldericon\ outboundadapters/.
+.3 \foldericon\ persistence/.
+.4 \fileicon\ JpaSensorRepositoryAdapter.java.
+.3 \foldericon\ sensordrivers/.
+.4 \fileicon\ AcousticSensorDriverAdapter.java.
+.4 \fileicon\ RadiationSensorDriverAdapter.java.
+.4 \fileicon\ SeismicSensorDriverAdapter.java.
+.4 \fileicon\ SensorDriverFactoryAdapter.java.
+.4 \fileicon\ ThermalSensorDriverAdapter.java.
+}
+\end{minipage}
+\end{figure}
 
 
 
