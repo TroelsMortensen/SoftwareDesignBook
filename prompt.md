@@ -1,6 +1,27 @@
-next, I want a section about how the way of the dependencies often result in the application being shaped by the database and its structure and schema. Consider this comment: 
+Let's go with the first recommendation, add a new section after "Step 1: Start with the appliation layer".
 
-In a traditional Three-Layered Architecture, the answer is almost always yes. This is one of the most common criticisms of the model and why many modern architects move toward "Domain-Driven Design" or "Clean Architecture."Here is why the database often ends up "shaping" the entire application in this model:1. Top-Down DependencyIn the standard three-layer model, the dependencies flow like this:Presentation Layer $\rightarrow$ Business Logic Layer $\rightarrow$ Data Access LayerBecause the Business Logic depends on the Data Access Layer, the data structures defined in the database (tables, columns, relationships) tend to "leak" upward. You often end up with "Anemic Domain Models"—objects that are just carbon copies of your database tables with getters and setters, carrying no real logic.2. The "Database-First" WorkflowMost teams building a three-layered app start by designing the ERD (Entity Relationship Diagram).They decide what tables they need.They create the "Data Entities."They write the "Business Logic" to manipulate those specific entities.In this scenario, the database is the foundation. If you change a column name in the database, it ripples through the Data Layer, forces a change in the Logic Layer, and often breaks the UI. The database is the "source of truth," and the application is just a sophisticated UI for that database.3. SQL Leaking into LogicIn many three-layered monoliths, the Business Logic is filled with code that assumes a relational structure.Example: The logic layer might perform a complex "Join" or rely on a "Foreign Key" constraint to ensure data integrity.The Result: The application is now "shaped" by the fact that it is using a Relational Database. If you tried to switch to a Document Store (like MongoDB), the Business Logic would likely collapse because it is so tightly coupled to the table-based structure.How to stop the Database from shaping the AppIf you want to prevent this, you have to flip the script using Dependency Inversion (as we discussed with the Infrastructure Layer).The "Domain-First" ApproachIn more advanced architectures (like Hexagonal or Onion), the Business Logic (The Domain) is designed first, independent of any database.You define your objects based on Business Rules (e.g., an Order object has a CalculateTotal() method).The Database is treated as a Detail.The Infrastructure Layer is responsible for mapping the "Business Object" to the "Database Table."The Difference: In a three-layered app, the code says: "I am a system that manages SQL tables." In a Domain-centric app, the code says: "I am a system that manages Orders; I just happen to use SQL to remember them."
+Don't talk about hexagonal architecture here, this has not yet been introduced, and the reader my not understand the reference, unless that reference is to say something else will be introduced later.
 
+Your definition is good, for the sublayer, let's keep that.
 
-Form a plan to include this into the chapter.
+We must talk about dependencies within the application layer, and it's sublayers.
+
+Good idea to contrast with entities or dtos modules.
+
+The classic example, that this arose from is this: I have a CustomerService, which does stuff about customers. There is an OrderServices too. One day a developer adds a new feature to the CustomerService, like "View a customer with order history", so they realize they can use functionality already in the OrderService. Later on, another feature, now it's about viewing a specific order, but it includes customer information, so they realize they can use functionality already in the CustomerService. They make the OrderService depend on the CustomerService. Now we have a circular dependency. The point of the sub-layer is to prevent this kind of dependency from happening, by extracting the functionality into a separate sub-layer.
+However, I need another example, which is in line with the Abyssal Watch case study for the book.
+
+Other times, a sub-layer is because of some functionality which really doesn't fit into a standard Service class.
+I would need a example for this also.
+
+Don't move into DDD yet, or Domain Services. Don't put the domain inside application. 
+
+The Sibling packages you mention can make sense, assembler and factory, for example.
+
+I need to add a new package layout example. However, the current examples in this chapter uses the old diagram style. See the @hexagonal.tex file for the new style.
+
+Let's skip code examples for now, and keep it theoretical.
+
+Good with trade-offs.
+
+Form a plan for including this into the chapter.

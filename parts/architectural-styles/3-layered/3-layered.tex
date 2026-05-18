@@ -58,6 +58,180 @@ public final class ConfirmKaijuDetectionService {
 }
 \end{ridercode}
 
+\section{Application Sub-Layers}
+\label{sec:three_layered_application_sublayers}
+
+For many use cases, the application layer starts as a set of service classes: one class per capability, coordinating entities and persistence abstractions. That is enough for \texttt{Confirm First Kaiju Detection}, where orchestration and a small amount of business flow live in one place.
+
+As the application grows, we often need additional kinds of classes inside \texttt{application}. We organize them into \textit{sub-layers}: logical subdivisions that do not change the top-level dependency rule (\texttt{presentation -> application -> persistence}), but make responsibilities easier to find and evolve.
+
+\subsection{What Is a Sub-Layer?}
+\label{sec:three_layered_sublayers_definition}
+
+A sub-layer is a subdivision \textit{inside} the application layer. It is not a fourth top-level layer. Presentation still depends on application; application still depends on persistence or infrastructure. Sub-layers only refine how we structure code within the middle layer.
+
+\subsection{When the Application Layer Needs More Than Services}
+\label{sec:three_layered_sublayers_when}
+
+We introduce sub-layers when we notice one or more of these signals:
+\begin{itemize}
+    \item the same business logic appears in multiple service classes,
+    \item a service method mixes orchestration with substantial calculations or mapping,
+    \item we are tempted to call one application service from another,
+    \item or a new responsibility clearly does not belong in a standard service class.
+\end{itemize}
+
+Sub-layers are a scaling mechanism. We should not add them on day one; we add them when the flat \texttt{service} package becomes hard to navigate or starts to encourage the wrong dependencies.
+
+\subsection{Breaking Circular Dependencies Between Services}
+\label{sec:three_layered_sublayers_circular}
+
+A common failure mode appears when two use cases need the same cross-cutting logic, but each lives in its own service class.
+
+Consider a classic example outside our case study. A \texttt{CustomerService} handles customer-related use cases. An \texttt{OrderService} handles orders. A new feature asks for ``view customer with order history,'' so the developer reuses logic from \texttt{OrderService} inside \texttt{CustomerService}. Later, another feature asks for ``view order with customer details,'' so the developer reuses \texttt{CustomerService} inside \texttt{OrderService}. We now have a circular dependency between application services.
+
+The same pattern appears in \texttt{Abyssal Watch}. A \texttt{MissionService} might expose a mission briefing that includes an active Kaiju tracking summary. A \texttt{KaijuTrackingService} might expose a Kaiju track view that includes mission assignment context. Both need the same mission--Kaiju linkage logic, but from opposite directions. If each service calls the other, we recreate the cycle. Mission workflows and multi-scout triangulation (\texttt{SCN-03}) naturally cross \texttt{Mission} and \texttt{Kaiju} boundaries, which makes this temptation likely as features accumulate.
+
+The sub-layer response is to extract the shared behavior into \texttt{application/shared}. Both services depend on \texttt{shared}; \texttt{shared} must not depend on either service. For example, a \texttt{MissionKaijuContext} helper in \texttt{shared} can resolve linkage data that both briefing and tracking flows need, while each service remains responsible for its own use-case orchestration.
+
+Application services must not depend on each other. Shared behavior belongs in a lower sub-layer or in a sibling helper package, not in a peer service call.
+
+\subsection{Responsibilities That Do Not Fit a Service Class}
+\label{sec:three_layered_sublayers_roles}
+
+Application services should orchestrate: open transaction boundaries, call persistence abstractions, enforce use-case flow, and delegate specialized work. Some responsibilities are real application concerns, but they clutter a service when kept inline. We give them a home in sibling sub-packages grouped by \textit{kind} of work:
+\begin{itemize}
+    \item \texttt{command} --- input structures for a use case (already familiar from Step~1),
+    \item \texttt{factory} --- object creation with steps and invariants,
+    \item \texttt{assembler} --- combining data from several sources into a use-case or view-oriented shape.
+\end{itemize}
+
+Other teams add packages such as \texttt{validator}, \texttt{policy}, or \texttt{calculator} when the same pattern appears repeatedly. The names matter less than the rule: these packages hold focused logic, not full use-case orchestration.
+
+In \texttt{Abyssal Watch}, confirming a Kaiju must satisfy \texttt{INV-04}: a Kaiju references exactly one origin Breach at first classification. A \texttt{KaijuFactory} in \texttt{factory} can own the construction steps and checks, while \texttt{ConfirmKaijuDetectionService} stays focused on orchestration and persistence coordination.
+
+For multi-scout triangulation (\texttt{SCN-03}), a service should decide \textit{when} to lock a position and \textit{which} observations to include, but fusing readings from multiple Scout Vessels and a Detection Buoy into one result shape is composition work. An \texttt{assembler} sub-layer is a natural home for that mapping. We return to read-path assembly strategies in Section~\ref{sec:three_layered_view_assembly}.
+
+\subsection{Dependencies Within the Application Layer}
+\label{sec:three_layered_sublayers_dependencies}
+
+Top-level layered rules still apply: \texttt{presentation} does not call \texttt{persistence} directly, and business orchestration stays in \texttt{application}. Within \texttt{application}, we apply the same discipline at a finer grain.
+
+Classes in the same sub-layer should not depend on each other. Dependencies flow \textit{downward} from a higher sub-layer to a lower one, or from a service to a sibling helper package. A dependency may skip a sub-layer when that keeps the design simple, but we avoid upward or peer-to-peer calls that recreate cycles.
+
+A practical hierarchy:
+\begin{enumerate}
+    \item \texttt{service} --- use-case orchestration, transaction boundaries, calls to persistence abstractions,
+    \item \texttt{shared} --- cross-cutting application logic reused by multiple services; must not depend on \texttt{service},
+    \item \texttt{factory}, \texttt{assembler}, and \texttt{command} --- sibling helpers used by \texttt{service} (and sometimes by \texttt{shared}); must not depend on \texttt{service}.
+\end{enumerate}
+
+\texttt{shared} sits \textit{below} services because it breaks service-to-service cycles. \texttt{factory}, \texttt{assembler}, and \texttt{command} are \textit{siblings} organized by type of responsibility, not by use-case name.
+
+Services remain the only place that should open transaction boundaries and call DAO or \texttt{UnitOfWork} abstractions directly. Helpers in \texttt{shared}, \texttt{factory}, and \texttt{assembler} work with entities and plain data; the service passes in what they need and applies the result inside a use-case flow.
+
+At the strict end of 3-layered architecture, dependencies do not skip layers: every call from presentation goes through application services, and every persistence access goes through the outer layer. In practice, many codebases are looser. We discuss relaxed layer rules in a later chapter; for now, we treat strict downward flow as the default guardrail.
+
+\subsection{Sub-Layers Versus Optional Modules}
+\label{sec:three_layered_sublayers_modules}
+
+Sub-layers organize code \textit{inside} \texttt{application}. Optional modules such as \texttt{entities} and \texttt{dtos} sit at solution level alongside layers. They solve different problems:
+\begin{itemize}
+    \item Sub-layers (\texttt{service}, \texttt{shared}, \texttt{factory}, \texttt{assembler}, \texttt{command}) express \textit{roles} within business orchestration.
+    \item The \texttt{entities} module holds shared nouns and behavior for concepts such as \texttt{Kaiju} and \texttt{Breach} (see Section~\ref{sec:three_layered_entities_module}).
+    \item The \texttt{dtos} module holds stable contracts between \texttt{presentation} and \texttt{application} (see Section~\ref{sec:three_layered_dto_module}).
+\end{itemize}
+
+Presentation should call application \textit{services}, not \texttt{shared} or \texttt{assembler} directly. Otherwise we bypass use-case orchestration and scatter entry points through the middle layer.
+
+Do not confuse \texttt{application/shared} with the \texttt{entities} module. \texttt{entities} models what exists in the domain; \texttt{shared} holds application logic that spans multiple use cases or aggregates.
+
+\subsection{Package Layout With Sub-Layers}
+\label{sec:three_layered_sublayers_layout}
+
+We can grow the application package incrementally. Figure~\ref{fig:three_layered_app_baseline} shows the starting point aligned with Step~1.
+
+\needspace{10\baselineskip}
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.8\textwidth}
+\dirtree{%
+.1 \foldericon\ com.abyssalwatch/.
+.2 \foldericon\ application/.
+.3 \foldericon\ service/.
+.3 \foldericon\ command/.
+.2 \foldericon\ presentation/.
+.2 \foldericon\ persistence/.
+}
+\end{minipage}
+\caption{Baseline application structure after Step~1.}
+\label{fig:three_layered_app_baseline}
+\end{figure}
+
+When shared logic and specialized responsibilities appear, we add sub-packages under \texttt{application}, as in Figure~\ref{fig:three_layered_app_sublayers}.
+
+\needspace{12\baselineskip}
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.8\textwidth}
+\dirtree{%
+.1 \foldericon\ com.abyssalwatch/.
+.2 \foldericon\ application/.
+.3 \foldericon\ service/.
+.3 \foldericon\ shared/.
+.3 \foldericon\ factory/.
+.3 \foldericon\ assembler/.
+.3 \foldericon\ command/.
+.2 \foldericon\ presentation/.
+.2 \foldericon\ persistence/.
+}
+\end{minipage}
+\caption{Application layer with sub-layers for shared logic, factories, and assemblers.}
+\label{fig:three_layered_app_sublayers}
+\end{figure}
+
+Optional modules remain siblings at the solution root, not nested inside \texttt{application}, as in Figure~\ref{fig:three_layered_app_modules}.
+
+\needspace{12\baselineskip}
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.8\textwidth}
+\dirtree{%
+.1 \foldericon\ com.abyssalwatch/.
+.2 \foldericon\ application/.
+.3 \foldericon\ service/.
+.3 \foldericon\ shared/.
+.3 \foldericon\ factory/.
+.3 \foldericon\ assembler/.
+.3 \foldericon\ command/.
+.2 \foldericon\ presentation/.
+.2 \foldericon\ persistence/.
+.2 \foldericon\ entities/.
+.2 \foldericon\ dtos/.
+.2 \foldericon\ config/.
+}
+\end{minipage}
+\caption{Sub-layers inside \texttt{application} alongside optional root modules.}
+\label{fig:three_layered_app_modules}
+\end{figure}
+
+\subsection{Trade-offs and Common Mistakes}
+\label{sec:three_layered_sublayers_tradeoffs}
+
+Sub-layers improve clarity when the application layer is under real pressure. They make it easier to place new code, avoid service cycles, and keep service classes focused on orchestration. Focused packages such as \texttt{shared}, \texttt{factory}, and \texttt{assembler} can also be tested in isolation, without standing up HTTP or a database.
+
+The costs are extra structure and onboarding friction. Teams that introduce sub-layers too early pay ceremony without benefit.
+
+Common mistakes include:
+\begin{itemize}
+    \item dependencies between application services,
+    \item \texttt{shared} depending on \texttt{service},
+    \item HTTP, SQL, or framework types inside \texttt{shared}, \texttt{factory}, or \texttt{assembler},
+    \item creating sub-layers before the flat \texttt{service} package is genuinely hard to work with,
+    \item treating the \texttt{entities} module as a substitute for \texttt{application/shared},
+    \item and presentation calling \texttt{shared} or \texttt{assembler} directly instead of going through a service.
+\end{itemize}
+
 \section{Step 2: Add the Presentation Layer}
 \label{sec:three_layered_step2}
 
@@ -162,6 +336,8 @@ public record ConfirmKaijuDetectionResponse(String kaijuId) {}
 \section{Recommended Package and Module Layout}
 \label{sec:three_layered_package_layout}
 
+When the application layer grows beyond services and commands, see Section~\ref{sec:three_layered_sublayers_layout} for a package layout that includes sub-layers such as \texttt{shared}, \texttt{factory}, and \texttt{assembler}.
+
 One practical Java layout for the baseline style is:
 
 \needspace{14\baselineskip}
@@ -216,6 +392,8 @@ Dependency rules for these layouts:
 
 \section{Assembling Data for Views}
 \label{sec:three_layered_view_assembly}
+
+Section~\ref{sec:three_layered_sublayers_roles} introduced the \texttt{assembler} sub-layer as a home for combining data from several sources. Here we compare broader strategies for read paths and view-oriented data.
 
 The data needed by a view is often not identical to a single entity shape. For example, an operations dashboard may require combined information from \texttt{Kaiju}, \texttt{Breach}, and \texttt{CommandCarrier} plus derived metrics. We therefore need an explicit strategy for assembling view data.
 
