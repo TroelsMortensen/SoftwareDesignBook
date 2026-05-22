@@ -782,10 +782,10 @@ These are the classes involved, so let's now look at the package layout.
     \DTsetlength{0.2em}{0.8em}{0.2em}{0.4pt}{1.6pt}
     
     \dirtree{%
-    .1 \foldericon\ src/.
+    .1 \foldericon\ abyssalwatch/.
     .2 \foldericon\ application/.
     .3 \foldericon\ inboundports/.
-    .4 \foldericon\ TriangulateKaijuPosition/.
+    .4 \foldericon\ triangulatekaijuposition/.
     .5 \fileicon\ TriangulateKaijuPositionPort.java.
     .5 \fileicon\ EstimatedArea.java.
     .3 \foldericon\ outboundports/.
@@ -840,14 +840,27 @@ I will start with a simple package diagram, see Figure~\ref{fig:hex_package_diag
 \needspace{20\baselineskip}
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.4\textwidth]{assets/PackageDiagram.pdf}
+    \includegraphics[width=0.6\textwidth]{assets/PackageDiagram.pdf}
     \caption{Package diagram of the application.}
     \label{fig:hex_package_diagram}
 \end{figure}
 
 \subsection{Class diagram}
 
-Next, we zoom in an extra step, so let's elaborate on the diagram, by adding the classes and their relationships. To keep things simple, I will leave out details like methods and fields. For now, we just focus on the classes, interfaces, and their relationships.
+Next, we zoom in an extra step, so let's elaborate on the diagram, by adding the classes and their relationships. To keep things simple, I will leave out details like methods and fields. For now, we just focus on the classes, interfaces, and their relationships. Observe, how the dependency arrows point:
+\begin{itemize}
+    \item from the \texttt{application} package to the \texttt{domain} package,
+    \item from the \texttt{inboundadapters} package to the \texttt{application} package,
+    \item from the \texttt{outboundadapters} package to the \texttt{application} package.
+\end{itemize}
+
+\needspace{20\baselineskip}
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{assets/ClassDiagram.pdf}
+    \caption{Package diagram of the application.}
+    \label{fig:hex_class_diagram}
+\end{figure}
 
 \subsection{Implementation}
 
