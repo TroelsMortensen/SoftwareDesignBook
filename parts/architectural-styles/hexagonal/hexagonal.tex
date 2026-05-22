@@ -771,52 +771,57 @@ These are the classes involved, so let's now look at the package layout.
 
 \subsection{Package layout}
 
+\begin{wrapfigure}{r}{0.45\textwidth}
+    \begin{flushleft}
+    \scriptsize % Keeps your font and folder/file icons small
+    
+    % Your working vertical compression dial
+    \setlength{\DTbaselineskip}{10pt} 
+    
+    % Your original DTsetlength settings (restored so it doesn't shrink horizontally)
+    \DTsetlength{0.2em}{0.8em}{0.2em}{0.4pt}{1.6pt}
+    
+    \dirtree{%
+    .1 \foldericon\ src/.
+    .2 \foldericon\ application/.
+    .3 \foldericon\ inboundports/.
+    .4 \foldericon\ TriangulateKaijuPosition/.
+    .5 \fileicon\ TriangulateKaijuPositionPort.java.
+    .5 \fileicon\ EstimatedArea.java.
+    .3 \foldericon\ outboundports/.
+    .4 \foldericon\ repositories/.
+    .5 \fileicon\ SensorRepository.java.
+    .4 \foldericon\ sensordrivers/.
+    .5 \fileicon\ SensorDriver.java.
+    .5 \fileicon\ SensorDriverFactory.java.
+    .3 \foldericon\ services/.
+    .4 \fileicon\ TriangulateKaijuPositionService.java.
+    .2 \foldericon\ domain/.
+    .3 \fileicon\ Sensor.java.
+    .3 \fileicon\ SensorId.java.
+    .3 \fileicon\ SensorType.java.
+    .3 \fileicon\ Location.java.
+    .3 \fileicon\ Longitude.java.
+    .3 \fileicon\ Latitude.java.
+    .2 \foldericon\ inboundadapters/.
+    .3 \foldericon\ web/.
+    .4 \fileicon\ KaijuController.java.
+    .2 \foldericon\ outboundadapters/.
+    .3 \foldericon\ persistence/.
+    .4 \fileicon\ JpaSensorRepository.java.
+    .3 \foldericon\ sensordrivers/.
+    .4 \fileicon\ AcousticSensorDriver.java.
+    .4 \fileicon\ RadiationSensorDriver.java.
+    .4 \fileicon\ SeismicSensorDriver.java.
+    .4 \fileicon\ SensorDriverFactory.java.
+    .4 \fileicon\ ThermalSensorDriver.java.
+    }
+    \end{flushleft}
+\end{wrapfigure}
+
 For this example I use the layered organization of the application hex, that is, separate sub-packages for \texttt{inboundports}, \texttt{outboundports}, and \texttt{services}. The outbound ports are further grouped by category, so that repository ports and sensor driver ports each live in their own sub-package. Domain types and adapters follow the same overall structure introduced earlier in this chapter.
 
-\needspace{40\baselineskip}
-\begin{figure}[h]
-\centering
-\begin{minipage}{0.8\textwidth} % Keeps the lines tight
-\scriptsize % Shrinks font and icons globally
-\setlength{\DTbaselineskip}{10pt}
-\DTsetlength{0.2em}{0.8em}{0.2em}{0.4pt}{1.6pt}       % Tightens horizontal indentation
-\dirtree{%
-.1 \foldericon\ src/.
-.2 \foldericon\ application/.
-.3 \foldericon\ inboundports/.
-.4 \foldericon\ TriangulateKaijuPosition/.
-.5 \fileicon\ TriangulateKaijuPositionPort.java.
-.5 \fileicon\ EstimatedArea.java.
-.3 \foldericon\ outboundports/.
-.4 \foldericon\ repositories/.
-.5 \fileicon\ SensorRepository.java.
-.4 \foldericon\ sensordrivers/.
-.5 \fileicon\ SensorDriver.java.
-.5 \fileicon\ SensorDriverFactory.java.
-.3 \foldericon\ services/.
-.4 \fileicon\ TriangulateKaijuPositionService.java.
-.2 \foldericon\ domain/.
-.3 \fileicon\ Sensor.java.
-.3 \fileicon\ SensorId.java.
-.3 \fileicon\ SensorType.java.
-.3 \fileicon\ Location.java.
-.3 \fileicon\ Longitude.java.
-.3 \fileicon\ Latitude.java.
-.2 \foldericon\ inboundadapters/.
-.3 \foldericon\ web/.
-.4 \fileicon\ KaijuController.java.
-.2 \foldericon\ outboundadapters/.
-.3 \foldericon\ persistence/.
-.4 \fileicon\ JpaSensorRepository.java.
-.3 \foldericon\ sensordrivers/.
-.4 \fileicon\ AcousticSensorDriver.java.
-.4 \fileicon\ RadiationSensorDriver.java.
-.4 \fileicon\ SeismicSensorDriver.java.
-.4 \fileicon\ SensorDriverFactory.java.
-.4 \fileicon\ ThermalSensorDriver.java.
-}
-\end{minipage}
-\end{figure}
+
 
 
 
