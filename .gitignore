@@ -1,3 +1,5 @@
 out/*
 !out/
 !out/main.pdf
+*.lock
+*.bak
