@@ -725,7 +725,7 @@ I will try to balance the complexity by abstracting away some technical details,
 
 \subsection{Classes involved}
 
-Let's look at the classes involved, I will provide a brief overview. Follow up sections will show the structure or location of the code, in relation to the hexagonal architecture. As this architecture focuses on business logic first, let's derive the classes from the use case by moving from inner hexes to outer hexes.
+Let's look at the classes involved, I will provide a brief overview. Follow up sections will show the structure or location of the code, in relation to the hexagonal architecture. As this architecture focuses on business logic first, let's derive the classes for the use case by moving from inner hexes to outer hexes.
 
 
 \subsubsection{Domain}
@@ -733,8 +733,8 @@ Let's look at the classes involved, I will provide a brief overview. Follow up s
 Let's start with the inner most hexagon, the domain.
 
 \begin{enumerate}
-    \item I need a domain entity to represent the \texttt{Sensor}. It will contain various values, and some of these will be represented by other classes. You will see in the code later.
-    \item To avoid \texttt{primitive obsession} \todoinref{add reference to primitive obsession}, I am going to model this with a few other classes, like \texttt{Location}, \texttt{Longitude}, \texttt{Latitude}, \texttt{SensorId}, \texttt{SensorType}, and perhaps more.
+    \item I need a domain entity to represent the \texttt{Sensor}. It will contain various values, like \texttt{SensorId}, \texttt{SensorType}, and more, and some of these will be represented by other classes. You will see in the code later.
+    \item To avoid \texttt{primitive obsession}\todoinref{add reference to primitive obsession}, I am going to model this with a few other classes, like \texttt{Location}, \texttt{Longitude}, \texttt{Latitude}, \texttt{SensorId}, \texttt{SensorType}, and perhaps more.
 \end{enumerate}
 
 \subsubsection{Application}
@@ -743,9 +743,9 @@ Then we move on to the application hexagon, where I define services and ports.
 
 \begin{enumerate}
     \item I need the \texttt{Service} class to implement the use case, \texttt{TriangulateKaijuPositionService}. It will contain the business logic, and will depend on the \texttt{Sensor} entity. It will have a method for executing the use case, which takes a \texttt{Location}, and a \texttt{Radius}. It will return a class, \texttt{EstimatedArea}, to represent the estimated area of the Kaiju. This \texttt{EstimatedArea} is not a domain entity, but just a simple object with a few properties.
-    \item My \texttt{Service} class will need to be able to retrieve all sensors within a given radius. I will create a \texttt{SensorRepository} port for this. Remember, a \texttt{Repository} is generally a port which can perform CRUD operations on an entity against a data storage (e.g. database), and the \texttt{Read} operation may optionally take filter parameters, like location and radius. Alternatively, I would define a dedicated port just for this use case.
-    \item My \texttt{Service} class will need to be able to poll the real sensors for data. The \texttt{Sensor} entity is just a \textit{representation} of a real sensor somewhere out in the ocean. The domain is isolated from the outside world, and therefore nothing in the domain can access the outside world, or more specifically, my \texttt{Sensor} entity cannot access the real world sensor. Instead, I need a port to represent the ability to poll the real sensor for data. I will call this port \texttt{SensorDriver}. There will be multiple adapters, which can connect to the real sensors.
-    \item Because I have different types of sensors, based on the \texttt{Sensor}'s \texttt{SensorType}, I there will be a specific adapter of the \texttt{SensorDriver} port for each sensor type. I need a way to figure out which adapter to use. Here comes an interesting problem. I have multiple adapters to the same port, the \texttt{SensorDriver} port. How do I know which adapter to use? I am going to introduce a \texttt{SensorDriverFactory} port, which will be responsible for creating the correct adapter based on the \texttt{SensorType}.
+    \item The \texttt{Service} class will need to be able to retrieve all sensors within a given radius. I will create a \texttt{SensorRepository} port for this. Remember, a \texttt{Repository} is generally a port which can perform CRUD operations on an entity against a data storage (e.g. database), and the \texttt{Read} operation may optionally take filter parameters, like location and radius. Alternatively, I would define a dedicated port just for this use case.
+    \item The \texttt{Service} class will need to be able to poll the real sensors for data. The \texttt{Sensor} entity is just a \textit{representation} of a real sensor somewhere out in the ocean. The domain is isolated from the outside world, and therefore nothing in the domain can access the outside world, or more specifically, my \texttt{Sensor} entity cannot access the real world sensor. Instead, I need a port to represent the ability to poll the real sensor for data. I will call this port \texttt{SensorDriver}. There will be multiple adapters, which can connect to the real sensors.
+    \item Because I have different types of sensors, based on the \texttt{Sensor}'s \texttt{SensorType}, there will be a specific adapter of the \texttt{SensorDriver} port for each sensor type. I need a way to figure out which adapter to use. Here comes an interesting problem. I have multiple adapters to the same port, the \texttt{SensorDriver} port. How do I know which adapter to use? I am going to introduce a \texttt{SensorDriverFactory} port, which will be responsible for creating the correct adapter based on the \texttt{SensorType}.
     \item I also need to expose the use case through a port, so I create an interface for the service class, let's call it \texttt{TriangulateKaijuPositionUseCase}.
 \end{enumerate}
 
@@ -755,7 +755,7 @@ We need access to the system, so we can execute the use case. I will create a We
 
 \subsubsection{Outbound Adapters}
 
-These adapters provide access to the outside world. Either so my service class can send data out of the system, or pull data into the system.
+These adapters provide access to the outside world. Either so \texttt{service} class can send data out of the system, or pull data into the system.
 
 \begin{enumerate}
     \item I need an adapter for the \texttt{SensorRepository} port. Let's assume several use cases need to execute CRUD operations on sensor entities, so there is already an adapter for this port.
@@ -773,15 +773,20 @@ These are the classes involved, so let's now look at the package layout.
 
 For this example I use the layered organization of the application hex, that is, separate sub-packages for \texttt{inboundports}, \texttt{outboundports}, and \texttt{services}. The outbound ports are further grouped by category, so that repository ports and sensor driver ports each live in their own sub-package. Domain types and adapters follow the same overall structure introduced earlier in this chapter.
 
-\needspace{25\baselineskip}
+\needspace{40\baselineskip}
 \begin{figure}[h]
 \centering
 \begin{minipage}{0.8\textwidth} % Keeps the lines tight
+\scriptsize % Shrinks font and icons globally
+\setlength{\DTbaselineskip}{10pt}
+\DTsetlength{0.2em}{0.8em}{0.2em}{0.4pt}{1.6pt}       % Tightens horizontal indentation
 \dirtree{%
 .1 \foldericon\ src/.
 .2 \foldericon\ application/.
 .3 \foldericon\ inboundports/.
-.4 \fileicon\ TriangulateKaijuPositionUseCase.java.
+.4 \foldericon\ TriangulateKaijuPosition/.
+.5 \fileicon\ TriangulateKaijuPositionPort.java.
+.5 \fileicon\ EstimatedArea.java.
 .3 \foldericon\ outboundports/.
 .4 \foldericon\ repositories/.
 .5 \fileicon\ SensorRepository.java.
@@ -790,7 +795,6 @@ For this example I use the layered organization of the application hex, that is,
 .5 \fileicon\ SensorDriverFactory.java.
 .3 \foldericon\ services/.
 .4 \fileicon\ TriangulateKaijuPositionService.java.
-.4 \fileicon\ EstimatedArea.java.
 .2 \foldericon\ domain/.
 .3 \fileicon\ Sensor.java.
 .3 \fileicon\ SensorId.java.
@@ -803,23 +807,42 @@ For this example I use the layered organization of the application hex, that is,
 .4 \fileicon\ KaijuController.java.
 .2 \foldericon\ outboundadapters/.
 .3 \foldericon\ persistence/.
-.4 \fileicon\ JpaSensorRepositoryAdapter.java.
+.4 \fileicon\ JpaSensorRepository.java.
 .3 \foldericon\ sensordrivers/.
-.4 \fileicon\ AcousticSensorDriverAdapter.java.
-.4 \fileicon\ RadiationSensorDriverAdapter.java.
-.4 \fileicon\ SeismicSensorDriverAdapter.java.
-.4 \fileicon\ SensorDriverFactoryAdapter.java.
-.4 \fileicon\ ThermalSensorDriverAdapter.java.
+.4 \fileicon\ AcousticSensorDriver.java.
+.4 \fileicon\ RadiationSensorDriver.java.
+.4 \fileicon\ SeismicSensorDriver.java.
+.4 \fileicon\ SensorDriverFactory.java.
+.4 \fileicon\ ThermalSensorDriver.java.
 }
 \end{minipage}
 \end{figure}
 
 
 
-Notice how the \texttt{SensorDriverFactoryAdapter} sits next to the concrete \texttt{SensorDriver} adapters in \texttt{outboundadapters/sensordrivers/}, while its port \texttt{SensorDriverFactory} stays in \texttt{application/ outboundports/sensordrivers/}. The factory must be able to reference each concrete adapter to instantiate the right one, which is only allowed on the outbound side. The next subsection shows how these classes relate to each other.
+Notice how the \texttt{SensorDriverFactory} sits next to the concrete \texttt{SensorDriver} adapters in \texttt{outboundadapters/sensordrivers/}, while its port, \texttt{SensorDriverFactory}, stays in \texttt{application/ outboundports/sensordrivers/}. The factory must be able to reference each concrete adapter to instantiate the right one, which is only allowed on the outbound side. The next subsection shows how these classes relate to each other.
+
+You should also notice the location of the \texttt{EstimatedArea} class. Why is this placed in the inboundports package? Because it is a DTO, a simple data transfer object. It contains the result of the use case. It is therefore part of the \textit{contract} for the use case. The inbound adapter hexagon should depend on this \texttt{inboundports} package. It should not depend on anything else in the application hexagon. Therefore, everything that is exposed to the outside of the application package, must be placed in the inboundports package.
+
+If you have a class to act as the input for the use case, it should also be placed here.
+
+\subsection{Package diagram}
+
+One way to visualize the application structure is with a folder structure diagram, as we just saw. This shows grouping and organization of classes. But it does not show the relationships between the classes, and by extention, the relationships between packages. The relationships and dependencies between different parts of the application is very important to manage, when we talk architecture. 
+
+I will start with a simple package diagram, see Figure~\ref{fig:hex_package_diagram}. The dashed arrows between packages indicate that a class in one package depends on a class/interface in another package. Essentially, there is an \texttt{import} statement in the code. I use different shades for the packages based on their depth, just a personal preference. I believe it adds a bit of clarity. I organize the package layout stacked vertically, as this is general convention. Classes handling input to the system are placed at the top, and classes handling output from the system are placed at the bottom.
+
+\needspace{20\baselineskip}
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.4\textwidth]{assets/PackageDiagram.pdf}
+    \caption{Package diagram of the application.}
+    \label{fig:hex_package_diagram}
+\end{figure}
 
 \subsection{Class diagram}
 
+Next, we zoom in an extra step, so let's elaborate on the diagram, by adding the classes and their relationships. To keep things simple, I will leave out details like methods and fields. For now, we just focus on the classes, interfaces, and their relationships.
 
 \subsection{Implementation}
 
