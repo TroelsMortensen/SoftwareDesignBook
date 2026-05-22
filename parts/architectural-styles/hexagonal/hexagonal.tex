@@ -837,6 +837,13 @@ One way to visualize the application structure is with a folder structure diagra
 
 I will start with a simple package diagram, see Figure~\ref{fig:hex_package_diagram}. The dashed arrows between packages indicate that a class in one package depends on a class/interface in another package. Essentially, there is an \texttt{import} statement in the code. I use different shades for the packages based on their depth, just a personal preference. I believe it adds a bit of clarity. I organize the package layout stacked vertically, as this is general convention. Classes handling input to the system are placed at the top, and classes handling output from the system are placed at the bottom.
 
+Observe, how the dependency arrows point:
+\begin{itemize}
+    \item from the \texttt{application} package to the \texttt{domain} package,
+    \item from the \texttt{inboundadapters} package to the \texttt{application} package,
+    \item from the \texttt{outboundadapters} package to the \texttt{application} package.
+\end{itemize}
+
 \needspace{20\baselineskip}
 \begin{figure}[htbp]
     \centering
@@ -847,12 +854,7 @@ I will start with a simple package diagram, see Figure~\ref{fig:hex_package_diag
 
 \subsection{Class diagram}
 
-Next, we zoom in an extra step, so let's elaborate on the diagram, by adding the classes and their relationships. To keep things simple, I will leave out details like methods and fields. For now, we just focus on the classes, interfaces, and their relationships. Observe, how the dependency arrows point:
-\begin{itemize}
-    \item from the \texttt{application} package to the \texttt{domain} package,
-    \item from the \texttt{inboundadapters} package to the \texttt{application} package,
-    \item from the \texttt{outboundadapters} package to the \texttt{application} package.
-\end{itemize}
+Next, we zoom in an extra step, so let's elaborate on the diagram, by adding the classes and their relationships. To keep things simple, I will leave out details like methods and fields. For now, we just focus on the classes, interfaces, and their relationships. 
 
 \needspace{20\baselineskip}
 \begin{figure}[htbp]
