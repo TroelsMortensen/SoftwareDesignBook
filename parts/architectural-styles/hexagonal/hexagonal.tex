@@ -864,8 +864,163 @@ Next, we zoom in an extra step, so let's elaborate on the diagram, by adding the
     \label{fig:hex_class_diagram}
 \end{figure}
 
+In this diagram, Figure~\ref{fig:hex_class_diagram}, the arrows are more explicit. But still, between packages,  they point the same direction as the previous package diagram in Figure~\ref{fig:hex_package_diagram}.
+
 \subsection{Implementation}
 
+The example have grown fairly comprehensive by now, but let's try and a look, again hex by hex. I reserve the right to abstract away some details here and there to shorten things.
+
+\subsubsection{Domain}
+
+First, I model the domain classes. To keep things short and simple, I will do this with records. The result is that the domain classes are very simple, just data, and contains no behavior or logic.
+
+\needspace{21\baselineskip}
+\begin{ridercode}{Java}
+public record Sensor(
+    SensorId id,
+    SensorType type,
+    Location location,
+    double uncertaintyRadius,
+    double uncertaintyAngle
+);
+
+public record SensorId(String value);
+
+public record SensorType(String value);
+
+public record Location(
+    Latitude latitude,
+    Longitude longitude
+);
+
+public record Latitude(double value);
+
+public record Longitude(double value);
+\end{ridercode}
+
+The point of all these small records is to have explicit types for the values. The alternative was to have the \texttt{Sensor} class take 4 strings and 2 doubles, which would be less expressive.
+
+\subsubsection{Application}
+
+We move on to the application hexagon. First, the inbound port and data. At the time of writing, I am unsure how to structure the data for the \texttt{EstimatedArea} class. It is some irregular polygon, but I will just represent it as a list of points, or locations.
+
+\needspace{8\baselineskip}
+\begin{ridercode}{Java}
+public interface TriangulateKaijuPositionPort
+{
+    EstimatedArea triangulate(Location location, double radius);
+}
+
+public record EstimatedArea(List<Location> points);
+\end{ridercode}
+
+Let's then move on to the outbound ports, I need three interfaces:
+
+\needspace{7\baselineskip}
+\begin{ridercode}{Java}
+public interface SensorRepository
+{
+    List<Sensor> findAllByCircle(
+        Location location,
+        double radius
+    );
+}
+
+public interface SensorDriver
+{
+    AnnularSector poll(Location targetLocation);
+}
+
+public interface SensorDriverFactory
+{
+    SensorDriver create(SensorType type);
+}
+
+\end{ridercode}
+
+Now that the interfaces are in place, we can move on to the service class. 
+
+\needspace{30\baselineskip}
+\begin{ridercode}{Java}
+public class TriangulateKaijuPositionService implements TriangulateKaijuPositionPort
+{
+    private final SensorRepository sensorRepository;
+    private final SensorDriverFactory sensorDriverFactory;
+
+    public TriangulateKaijuPositionService(
+        SensorRepository sensorRepository,
+        SensorDriverFactory sensorDriverFactory
+    )
+    {
+        this.sensorRepository = sensorRepository;
+        this.sensorDriverFactory = sensorDriverFactory;
+    }
+
+    @Override
+    public EstimatedArea triangulate(
+        Location location,
+        double radius
+    )
+    {
+        List<Sensor> sensors =
+            sensorRepository.findAllWithinCircle(
+                location,
+                radius
+            );
+
+        List<SensorDriver> sensorDrivers =
+            createSensorDrivers(sensors);
+
+        List<AnnularSector> annularSectors =
+            pollSensorDrivers(sensorDrivers, location);
+
+        List<Location> estimatedPoints =
+            computeEstimatedArea(annularSectors);
+
+        return new EstimatedArea(estimatedPoints);
+    }
+
+    private List<SensorDriver> createSensorDrivers(
+        List<Sensor> sensors
+    )
+    {
+        List<SensorDriver> sensorDrivers = new ArrayList<>();
+
+        for (Sensor sensor : sensors)
+        {
+            SensorDriver driver =
+                sensorDriverFactory.create(sensor.type());
+            sensorDrivers.add(driver);
+        }
+
+        return sensorDrivers;
+    }
+
+    private List<AnnularSector> pollSensorDrivers(
+        List<SensorDriver> sensorDrivers,
+        Location location
+    )
+    {
+        List<AnnularSector> annularSectors = new ArrayList<>();
+
+        for (SensorDriver driver : sensorDrivers)
+        {
+            AnnularSector sector = driver.poll(location);
+            annularSectors.add(sector);
+        }
+
+        return annularSectors;
+    }
+
+    private List<Location> computeEstimatedArea(
+        List<AnnularSector> annularSectors
+    )
+    {
+        // TODO: Implement this.
+    }
+}
+
+\end{ridercode}
 
 
 \section{Testing Across the Hexagon Boundary}
