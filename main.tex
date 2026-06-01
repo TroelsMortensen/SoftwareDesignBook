@@ -72,6 +72,8 @@
     \usepackage[most]{tcolorbox}
     \tcbuselibrary{listings}
 
+    \newcounter{listing}
+    \numberwithin{listing}{chapter}
     \newtcblisting{ridercode}[2][]{
         enhanced,
         arc=5pt,
@@ -88,7 +90,19 @@
         #1
     }
 
+    \usepackage{caption}
+    \DeclareCaptionType{listing}[Code snippet][List of code snippets]
+    \numberwithin{listing}{chapter}
+    % Optional: match figure caption look
+    \captionsetup[listing]{
+        font=small,
+        labelfont=bf,
+        labelsep=colon,
+        skip=4pt,                    % match typical figure gap; try 6pt–10pt
+        belowskip=1.0\baselineskip, 
+    }
     
+    \providecommand*{\listingautorefname}{Code snippet}
 
     \addbibresource{references.bib}
 

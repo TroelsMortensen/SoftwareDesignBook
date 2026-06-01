@@ -882,7 +882,7 @@ The example have grown fairly comprehensive by now, but let's try and a look, ag
 
 First, I model the domain classes. To keep things short and simple, I will do this with records. The result is that the domain classes are very simple, just data, and contains no behavior or logic. I could do a rich domain-model, with behaviour, but that is not the point of this example, and I want to keep some work in the service class, as that closer follows the original presentation of the architecture.
 
-You can of course keep the classes, but just move some logic from service to domain entity, if you prefer.
+You can of course keep the classes, but just move some logic from service to domain entity, if you prefer. For now, observe the code in snippet~\ref{lst:sensor-records}
 
 \needspace{21\baselineskip}
 \begin{ridercode}{Java}
@@ -907,6 +907,9 @@ public record Latitude(double value);
 
 public record Longitude(double value);
 \end{ridercode}
+\captionof{listing}{Sensor entity, and supporting values}
+\label{lst:sensor-records}
+
 
 The point of all these small records is to have explicit types for the values. The alternative was to have the \texttt{Sensor} class take 4 strings and 2 doubles, which would be less expressive.
 
