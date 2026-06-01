@@ -864,7 +864,15 @@ Next, we zoom in an extra step, so let's elaborate on the diagram, by adding the
     \label{fig:hex_class_diagram}
 \end{figure}
 
-In this diagram, Figure~\ref{fig:hex_class_diagram}, the arrows are more explicit. But still, between packages,  they point the same direction as the previous package diagram in Figure~\ref{fig:hex_package_diagram}.
+In Figure~\ref{fig:hex_class_diagram}, the arrows are more explicit: different arrows for different types of connections. But still, between packages,  they point the same direction as the previous package diagram in Figure~\ref{fig:hex_package_diagram}.
+
+\begin{itemize}
+    \item We have arrows \textit{from} \texttt{outboundadapters} \textit{to} \texttt{application}, now in form of \textit{implements}. But that is still a kind of dependency.
+    \item We have arrows \textit{from} \texttt{inboundadapters} \textit{to} \texttt{application}, now in form of \textit{associations} and \textit{dependencies}. Both, obviously, are kinds of dependencies.
+\end{itemize}
+
+
+It is time to move from design to implementation. Let's follow up with some code examples.
 
 \subsection{Implementation}
 
@@ -872,7 +880,9 @@ The example have grown fairly comprehensive by now, but let's try and a look, ag
 
 \subsubsection{Domain}
 
-First, I model the domain classes. To keep things short and simple, I will do this with records. The result is that the domain classes are very simple, just data, and contains no behavior or logic.
+First, I model the domain classes. To keep things short and simple, I will do this with records. The result is that the domain classes are very simple, just data, and contains no behavior or logic. I could do a rich domain-model, with behaviour, but that is not the point of this example, and I want to keep some work in the service class, as that closer follows the original presentation of the architecture.
+
+You can of course keep the classes, but just move some logic from service to domain entity, if you prefer.
 
 \needspace{21\baselineskip}
 \begin{ridercode}{Java}
