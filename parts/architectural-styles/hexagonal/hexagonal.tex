@@ -88,8 +88,10 @@ public interface ConfirmKaijuDetectionPort
 
 }
 \end{ridercode}
+\captionof{listing}{\texttt{ConfirmKaijuDetectionPort} input port}
+\label{lst:confirm-detection-port}
 
-Next, we have the implementation of the port. It is a service class that implements the interface and contains the use-case logic. Here, we confirm a detection by linking a new \texttt{Kaiju} to its origin \texttt{Breach} and persisting it through \texttt{SaveKaijuPort}.
+Next, we have the implementation of the port in Code snippet~\ref{lst:confirm-detection-service}. It is a service class that implements the interface and contains the use-case logic. Here, we confirm a detection by linking a new \texttt{Kaiju} to its origin \texttt{Breach} and persisting it through \texttt{SaveKaijuPort}.
 
 There is also a second output port, \texttt{PublishKaijuConfirmedPort}, implemented by a driven adapter that publishes a mission event. It is similar to the Observer Design Pattern\todoinref{add reference to Observer Pattern}. This event can trigger downstream actions such as command alerts or tracking workflows.
 
@@ -129,6 +131,8 @@ public final class ConfirmKaijuDetectionService
     }
 }
 \end{ridercode}
+\captionof{listing}{\texttt{ConfirmKaijuDetectionService} use-case implementation}
+\label{lst:confirm-detection-service}
 
 \section{Step 2: Add Driving Adapters and Input Ports}
 \label{sec:hexagonal_step2}
@@ -170,7 +174,7 @@ Common driving adapters include:
 \subsection{Input Port and Driving Adapter in Java}
 \label{sec:hexagonal_java_driving_adapter}
 
-The driving adapter talks only to the input port and maps transport-specific models to use-case models:
+Code snippet~\ref{lst:kaiju-controller} shows a driving adapter that talks only to the input port and maps transport-specific models to use-case models:
 
 \needspace{16\baselineskip}
 \begin{ridercode}{Java}
@@ -201,6 +205,8 @@ public class KaijuController
     }
 }
 \end{ridercode}
+\captionof{listing}{\texttt{KaijuController} REST driving adapter}
+\label{lst:kaiju-controller}
 
 \section{Step 3: Add Driven Adapters and Output Ports}
 \label{sec:hexagonal_step3}
@@ -252,7 +258,7 @@ Typical driven adapters are:
 
 On the driven side, the core defines output ports, and infrastructure implements them.
 
-Let's start with the first output port, \texttt{LoadBreachPort}. It is used to load a Breach from storage. I use \texttt{Optional} \todoinref{add reference, when Optional pattern is written} to indicate that the Breach may not be found.
+Let's start with the first outbound port, \texttt{LoadBreachPort} (Code snippet~\ref{lst:load-breach-port}). It is used to load a Breach from storage. I use \texttt{Optional} \todoinref{add reference, when Optional pattern is written} to indicate that the Breach may not be found.
 
 \needspace{4\baselineskip}
 \begin{ridercode}{Java}
@@ -261,8 +267,10 @@ public interface LoadBreachPort
     Optional<Breach> loadById(BreachId breachId);
 }
 \end{ridercode}
+\captionof{listing}{\texttt{LoadBreachPort} output port}
+\label{lst:load-breach-port}
 
-Then the next port to save a Kaiju entity to the storage (database or other storage). I keep the interfaces small here. But sometimes you may want to group multiple related operations into a single interface. For example, you could have an interface which contains both the save and load operations. 
+Then the next port, \texttt{SaveKaijuPort} (Code snippet~\ref{lst:save-kaiju-port}), to save a Kaiju entity to the storage (database or other storage). I keep the interfaces small here. But sometimes you may want to group multiple related operations into a single interface. For example, you could have an interface which contains both the save and load operations. 
 
 \needspace{4\baselineskip}
 \begin{ridercode}{Java}
@@ -271,8 +279,10 @@ public interface SaveKaijuPort
     void save(Kaiju kaiju);
 }
 \end{ridercode}
+\captionof{listing}{\texttt{SaveKaijuPort} outbound port}
+\label{lst:save-kaiju-port}
 
-And an implementation of the latter port. Here we use \texttt{Spring Data JPA} to save the Kaiju to storage. If you are unfamiliar with \texttt{Spring Data JPA}, you can think of it as a library that provides a way to interact with a database, without explicitly writing SQL queries.
+And an implementation of the latter port in Code snippet~\ref{lst:jpa-kaiju-adapter}. Here we use \texttt{Spring Data JPA} to save the Kaiju to storage. If you are unfamiliar with \texttt{Spring Data JPA}, you can think of it as a library that provides a way to interact with a database, without explicitly writing SQL queries.
 
 \needspace{8\baselineskip}
 \begin{ridercode}{Java}
@@ -289,13 +299,15 @@ public final class JpaKaijuRepositoryAdapter
     }
 }
 \end{ridercode}
+\captionof{listing}{\texttt{JpaKaijuRepositoryAdapter} driven adapter}
+\label{lst:jpa-kaiju-adapter}
 
 The purpose of this adapter is to hide the database implementation details from the core.
 
 \subsection{Mapping Boundaries in Java}
 \label{sec:hexagonal_java_mapping_boundaries}
 
-Mapping code belongs in adapters, because adapters translate between outside models and core models. For simplicity, I use here record classes to represent the commands and requests.
+Mapping code belongs in adapters, because adapters translate between outside models and core models. Code snippet~\ref{lst:request-command-mapping} shows request and command mapping; Code snippet~\ref{lst:kaiju-entity} shows the persistence-side entity. For simplicity, I use here record classes to represent the commands and requests.
 
 \needspace{8\baselineskip}
 \begin{ridercode}{Java}
@@ -318,6 +330,8 @@ ConfirmKaijuDetectionCommand command =
         request.originBreachId()
     );
 \end{ridercode}
+\captionof{listing}{Request and command mapping records}
+\label{lst:request-command-mapping}
 
 \needspace{13\baselineskip}
 \begin{ridercode}{Java}
@@ -337,10 +351,8 @@ public class KaijuEntity
     }
 }
 \end{ridercode}
-
-
-
-
+\captionof{listing}{\texttt{KaijuEntity} JPA persistence model}
+\label{lst:kaiju-entity}
 
 \subsection{Dependency Rules}
 \label{sec:hexagonal_dependency_rules}
@@ -882,7 +894,7 @@ The example have grown fairly comprehensive by now, but let's try and a look, ag
 
 First, I model the domain classes. To keep things short and simple, I will do this with records. The result is that the domain classes are very simple, just data, and contains no behavior or logic. I could do a rich domain-model, with behaviour, but that is not the point of this example, and I want to keep some work in the service class, as that closer follows the original presentation of the architecture.
 
-You can of course keep the classes, but just move some logic from service to domain entity, if you prefer. For now, observe the code in snippet~\ref{lst:sensor-records}
+You can of course keep the classes, but just move some logic from service to domain entity, if you prefer. For now, see Code snippet~\ref{lst:sensor-records}.
 
 \needspace{21\baselineskip}
 \begin{ridercode}{Java}
@@ -910,12 +922,15 @@ public record Longitude(double value);
 \captionof{listing}{Sensor entity, and supporting values}
 \label{lst:sensor-records}
 
-
 The point of all these small records is to have explicit types for the values. The alternative was to have the \texttt{Sensor} class take 4 strings and 2 doubles, which would be less expressive.
 
 \subsubsection{Application}
 
-We move on to the application hexagon. First, the inbound port and data. At the time of writing, I am unsure how to structure the data for the \texttt{EstimatedArea} class. It is some irregular polygon, but I will just represent it as a list of points, or locations.
+We move on to the application hexagon. As previously mentioned, this hexagon consists of three parts: inbound ports, outbound ports, and service classes. So, let's split this up.
+
+\paragraph{Inbound ports:}
+
+First, the inbound port and data in Code snippet~\ref{lst:triangulate-port}. At the time of writing, I am unsure how to structure the data for the \texttt{EstimatedArea} class. It is some irregular polygon, but I will just represent it as a list of points, or locations.
 
 \needspace{8\baselineskip}
 \begin{ridercode}{Java}
@@ -926,8 +941,12 @@ public interface TriangulateKaijuPositionPort
 
 public record EstimatedArea(List<Location> points);
 \end{ridercode}
+\captionof{listing}{\texttt{TriangulateKaijuPositionPort} and \texttt{EstimatedArea}}
+\label{lst:triangulate-port}
 
-Let's then move on to the outbound ports, I need three interfaces:
+
+\paragraph{Outbound ports:}
+Let's then move on to the outbound ports in Code snippet~\ref{lst:triangulation-outbound-ports}. I need three interfaces:
 
 \needspace{7\baselineskip}
 \begin{ridercode}{Java}
@@ -950,10 +969,15 @@ public interface SensorDriverFactory
 }
 
 \end{ridercode}
+\captionof{listing}{Sensor repository and driver outbound ports}
+\label{lst:triangulation-outbound-ports}
 
-Now that the interfaces are in place, we can move on to the service class. 
+\paragraph{Service class:}
 
-\needspace{30\baselineskip}
+Now that the interfaces are in place, I can implement the use case in \texttt{TriangulateKaijuPositionService}. The class is long enough that I show it in five snippets. First, the class, of course, implements the inbound port declared above in Code snippet~\ref{lst:triangulate-port}.
+Code snippet~\ref{lst:triangulate-service-class} shows how the constructor wires in the outbound ports from Code snippet~\ref{lst:triangulation-outbound-ports}.
+
+\needspace{15\baselineskip}
 \begin{ridercode}{Java}
 public class TriangulateKaijuPositionService implements TriangulateKaijuPositionPort
 {
@@ -968,80 +992,113 @@ public class TriangulateKaijuPositionService implements TriangulateKaijuPosition
         this.sensorRepository = sensorRepository;
         this.sensorDriverFactory = sensorDriverFactory;
     }
-
-    @Override
-    public EstimatedArea triangulate(
-        Location location,
-        double radius
-    )
-    {
-        List<Sensor> sensors =
-            sensorRepository.findAllWithinCircle(
-                location,
-                radius
-            );
-
-        List<SensorDriver> sensorDrivers =
-            createSensorDrivers(sensors);
-
-        List<AnnularSector> annularSectors =
-            pollSensorDrivers(sensorDrivers, location);
-
-        List<Location> estimatedPoints =
-            computeEstimatedArea(annularSectors);
-
-        return new EstimatedArea(estimatedPoints);
-    }
-
-    private List<SensorDriver> createSensorDrivers(
-        List<Sensor> sensors
-    )
-    {
-        List<SensorDriver> sensorDrivers = new ArrayList<>();
-
-        for (Sensor sensor : sensors)
-        {
-            SensorDriver driver =
-                sensorDriverFactory.create(sensor.type());
-            sensorDrivers.add(driver);
-        }
-
-        return sensorDrivers;
-    }
-
-    private List<AnnularSector> pollSensorDrivers(
-        List<SensorDriver> sensorDrivers,
-        Location location
-    )
-    {
-        List<AnnularSector> annularSectors = new ArrayList<>();
-
-        for (SensorDriver driver : sensorDrivers)
-        {
-            AnnularSector sector = driver.poll(location);
-            annularSectors.add(sector);
-        }
-
-        return annularSectors;
-    }
-
-    private List<Location> computeEstimatedArea(
-        List<AnnularSector> annularSectors
-    )
-    {
-        // TODO: Implement this.
-    }
+    // methods follow in subsequent snippets
 }
-
 \end{ridercode}
+\captionof{listing}{\texttt{TriangulateKaijuPositionService} dependencies and constructor}
+\label{lst:triangulate-service-class}
 
+The \texttt{triangulate} method in Code snippet~\ref{lst:triangulate-port} orchestrates the use case: it loads sensors in the given radius, delegates to helper methods, and returns an \texttt{EstimatedArea}.
+
+\needspace{23\baselineskip}
+\begin{ridercode}{Java}
+@Override
+public EstimatedArea triangulate(
+    Location location,
+    double radius
+)
+{
+    List<Sensor> sensors =
+        sensorRepository.findAllByCircle(
+            location,
+            radius
+        );
+
+    List<SensorDriver> sensorDrivers =
+        createSensorDrivers(sensors);
+
+    List<AnnularSector> annularSectors =
+        pollSensorDrivers(sensorDrivers, location);
+
+    List<Location> estimatedPoints =
+        computeEstimatedArea(annularSectors);
+
+    return new EstimatedArea(estimatedPoints);
+}
+\end{ridercode}
+\captionof{listing}{\texttt{triangulate} use-case orchestration}
+\label{lst:triangulate-service-triangulate}
+
+The \texttt{SensorDriverFactory} creates the correct \texttt{SensorDriver} adapter for each \texttt{SensorType}, this is done in the helper method \texttt{createSensorDrivers} in Code snippet~\ref{lst:triangulate-service-create-drivers}.
+
+\needspace{15\baselineskip}
+\begin{ridercode}{Java}
+private List<SensorDriver> createSensorDrivers(
+    List<Sensor> sensors
+)
+{
+    List<SensorDriver> sensorDrivers = new ArrayList<>();
+
+    for (Sensor sensor : sensors)
+    {
+        SensorDriver driver =
+            sensorDriverFactory.create(sensor.type());
+        sensorDrivers.add(driver);
+    }
+
+    return sensorDrivers;
+}
+\end{ridercode}
+\captionof{listing}{\texttt{createSensorDrivers} helper}
+\label{lst:triangulate-service-create-drivers}
+
+Each driver is polled at the target location, see the helper method \texttt{pollSensorDrivers} in Code snippet~\ref{lst:triangulate-service-poll-drivers}. The readings are collected as \texttt{AnnularSector} values. I imagine the driver automatically uses the uncertainty radius and angle of the sensor entity, to convert the reading to an \texttt{AnnularSector}.
+
+\needspace{15\baselineskip}
+\begin{ridercode}{Java}
+private List<AnnularSector> pollSensorDrivers(
+    List<SensorDriver> sensorDrivers,
+    Location location
+)
+{
+    List<AnnularSector> annularSectors = new ArrayList<>();
+
+    for (SensorDriver driver : sensorDrivers)
+    {
+        AnnularSector sector = driver.poll(location);
+        annularSectors.add(sector);
+    }
+
+    return annularSectors;
+}
+\end{ridercode}
+\captionof{listing}{\texttt{pollSensorDrivers} helper}
+\label{lst:triangulate-service-poll-drivers}
+
+The final piece of the triangulation logic, converting several annular sectors into a polygon defined by a list of locations, is done in the helper method \texttt{computeEstimatedArea} in Code snippet~\ref{lst:triangulate-service-compute-area}. This particular piece of mathematical logic is out of scope for this chapter; the helper is left as a stub.
+
+\needspace{6\baselineskip}
+\begin{ridercode}{Java}
+private List<Location> computeEstimatedArea(
+    List<AnnularSector> annularSectors
+)
+{
+    // TODO: Implement this.
+}
+\end{ridercode}
+\captionof{listing}{\texttt{computeEstimatedArea} helper (stub)}
+\label{lst:triangulate-service-compute-area}
+
+Together, Code snippets~\ref{lst:triangulate-service-class}--\ref{lst:triangulate-service-compute-area} form the full service class.
+
+This concludes the example of the Triangulate Kaiju Position use case.
 
 \section{Testing Across the Hexagon Boundary}
 \label{sec:hexagonal_testing}
 
 The separation of concerns gives us a practical testing strategy:\autocite{huttunen2026hexagonal}
 \begin{itemize}
-    \item test application behavior through input ports without real infrastructure,
+    \item test application behavior through input ports without real infrastructure (i.e. replace driven adapters with test doubles),
     \item test adapters against their technologies in focused integration tests,
     \item and keep end-to-end tests for wiring and critical user paths.
 \end{itemize}
@@ -1061,8 +1118,9 @@ This is not exclusive to hexagonal architecture. A disciplined layered architect
 \subsection{Testing Slices with Java}
 \label{sec:hexagonal_java_testing_slices}
 
-In Java, we can keep most behavior tests focused on the core. Here is an example of testing a use case defined in a service class. We use a fake implementation of the repository and the event publisher. Both fakes implement the the necessary interface.
+In Java, we can keep most behavior tests focused on the core. Code snippet~\ref{lst:confirm-detection-test} shows an example of testing a use case defined in a service class. We use a fake implementation of the repository and the event publisher. Both fakes implement the the necessary interface.
 
+\todoinref{I need to update the code, *ports are not right, repository, maybe}
 \needspace{30\baselineskip}
 \begin{ridercode}{Java}
 @Test
@@ -1096,7 +1154,8 @@ void confirmsDetectionAndPublishesEvent()
         .contains(command.originBreachId().value()));
 }
 \end{ridercode}
-
+\captionof{listing}{Unit test via inbound port with fake driven adapters}
+\label{lst:confirm-detection-test}
 
 \section{Practical Trade-offs}
 \label{sec:hexagonal_tradeoffs}
