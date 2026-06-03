@@ -619,7 +619,8 @@ Notice how each feature package clearly describes the feature through its name. 
 
 You might similarly organize your adapter layers by feature, so in the \texttt{outboundadapters} package, you will have sub-packages \texttt{confirmkaijudetection}, \texttt{registerkaiju}, and \texttt{triangulatekaiju}. And the same for the \texttt{inboundadapters} package.
 
-\subsection{Layers vs Feature Folders}
+\subsection{Sub-layer folders vs Feature Folders}
+\label{sec:hexagonal_layers_vs_features}
 
 So, which approach should you choose? Both are valid, and both have their own advantages and disadvantages.
 
@@ -676,6 +677,7 @@ So, which approach should you choose? Both are valid, and both have their own ad
 
 
 \section{Example}
+\label{sec:hexagonal_example}
 
 I hope by now you have some kind of understanding of the architecture. Comparing it to the layered architecture, the main difference is primarily about where the outbound ports (interfaces) are placed. The rest is pretty similar to the layered architecture. So, I think it is time for another example. It will perhaps be a bit elaborate, because I had fun developing the use case. It is about using sensors to triangulate the position of a suspected Kaiju.
 
@@ -1096,9 +1098,9 @@ This concludes the example of the Triangulate Kaiju Position use case.
 \section{Testing Across the Hexagon Boundary}
 \label{sec:hexagonal_testing}
 
-The separation of concerns gives us a practical testing strategy:\autocite{huttunen2026hexagonal}
+The proposed separation of concerns in the hexagonal architecture gives us a practical testing strategy:\autocite{huttunen2026hexagonal}
 \begin{itemize}
-    \item test application behavior through input ports without real infrastructure (i.e. replace driven adapters with test doubles),
+    \item test application behavior through inbound ports \textit{without} real infrastructure (i.e. replace driven adapters with test doubles),
     \item test adapters against their technologies in focused integration tests,
     \item and keep end-to-end tests for wiring and critical user paths.
 \end{itemize}
@@ -1110,15 +1112,16 @@ In short, we can focus on unit testing the behaviour of the core, by mocking \to
 \subsection{Why Ports Improve Testability}
 \label{sec:hexagonal_why_ports_testability}
 
-Ports improve testability because they create explicit \texttt{seams} \todoinref{add reference to seams} around behavior. An input port gives us a stable way to invoke a use case, while output ports let us replace infrastructure (outbound adapters) with in-memory test doubles \todoinref{add reference to test doubles}. 
-In practice, we execute a use case through an input port and provide fake implementations such as \texttt{LoadBreachPort} or \texttt{PublishKaijuConfirmedPort}. This keeps most tests fast and deterministic, because they verify business rules without requiring a running database, message broker, or HTTP communication.
+Ports (that is, interfaces) improve testability because they create explicit \textit{seams} \todoinref{add reference to seams} around behavior, which in turn allow us to isolate the behavior we want to test. An inbound port gives us a stable way to invoke a use case, while outbound ports let us replace infrastructure (outbound adapters) with in-memory test doubles \todoinref{add reference to test doubles}.
 
-This is not exclusive to hexagonal architecture. A disciplined layered architecture can also isolate dependencies behind interfaces and achieve good tests. The practical difference is that hexagonal architecture makes these seams a first-class design element around the core application, so isolated tests become the default rather than an optional refactoring.
+In practice, we execute a use case through an inbound port and provide fake implementations for the outbound ports such as \texttt{LoadBreachPort} or \texttt{PublishKaijuConfirmedPort}. This keeps most tests fast and deterministic, because they verify business rules without requiring a running database, message broker, or HTTP communication.
+
+Do \textbf{note} that this is not exclusive to hexagonal architecture. A disciplined layered architecture can also isolate dependencies behind interfaces and achieve good tests. In fact, any kind of architecture, assuming there a sufficient \textit{seams} in place, is generally testable. Hexagonal architecture was just designed to make these seams a first-class design element around the core application, so isolated tests become the default way of working rather than something added later.
 
 \subsection{Testing Slices with Java}
 \label{sec:hexagonal_java_testing_slices}
 
-In Java, we can keep most behavior tests focused on the core. Code snippet~\ref{lst:confirm-detection-test} shows an example of testing a use case defined in a service class. We use a fake implementation of the repository and the event publisher. Both fakes implement the the necessary interface.
+In Java, we can keep most behavior tests focused on the core. Code snippet~\ref{lst:confirm-detection-test} shows an example of testing a use case defined in a service class. We use a fake implementation of the repository and the event publisher. Both fakes implement the necessary interface.
 
 \todoinref{I need to update the code, *ports are not right, repository, maybe}
 \needspace{30\baselineskip}
@@ -1126,9 +1129,9 @@ In Java, we can keep most behavior tests focused on the core. Code snippet~\ref{
 @Test
 void confirmsDetectionAndPublishesEvent()
 {
-    FakeLoadBreachPort loadPort = new FakeLoadBreachPort();
-    FakeSaveKaijuPort savePort = new FakeSaveKaijuPort();
-    FakePublishKaijuConfirmedPort publishPort =
+    LoadBreachPort loadPort = new FakeLoadBreachPort();
+    SaveKaijuPort savePort = new FakeSaveKaijuPort();
+    PublishKaijuConfirmedPort publishPort =
         new FakePublishKaijuConfirmedPort();
 
     ConfirmKaijuDetectionService service =
@@ -1157,52 +1160,110 @@ void confirmsDetectionAndPublishesEvent()
 \captionof{listing}{Unit test via inbound port with fake driven adapters}
 \label{lst:confirm-detection-test}
 
+In the previous piece of code, I used specific \textit{save} and \textit{load} ports. Often, these are combined into a single port, i.e. a \textit{repository}, \todoinref{add reference to repository pattern} or Data Access Object \todoinref{add reference to Data Access Object pattern}.
+
 \section{Practical Trade-offs}
 \label{sec:hexagonal_tradeoffs}
 
-Hexagonal architecture improves replaceability of the adapters and testability, but it introduces explicit interfaces and mapping code. For small CRUD-heavy systems, that can feel heavy. For systems with changing workflows, multiple interfaces, or expensive integration points, the added structure usually pays for itself over time.
+Hexagonal architecture is a deliberate investment in explicit boundaries, not a default choice for every system. It improves replaceability and testability, but introduces ports, adapters, and mapping code. For small CRUD-focused systems, that can feel heavy; for systems with changing workflows, complex logic, a rich domain, or expensive integration points, the added structure usually pays for itself over time.
 
-\subsection{Hexagonal and Layered: A Preview}
-\label{sec:hexagonal_layered_preview}
+\subsection{Benefits}
+\label{sec:hexagonal_pros}
 
-Hexagonal and layered architecture are not enemies; both can be implemented well or poorly. A layered design with clear interfaces and dependency inversion can achieve strong testability. The practical difference we emphasize is orientation: hexagonal architecture centers on inside/outside boundaries and core-owned required ports, while layered architecture commonly centers on presentation, application, and persistence layers.
-
-
-\subsection{When Migration Is Worth It}
-\label{sec:hexagonal_migration_when}
-
-Migration from layered to hexagonal is most useful when integration change is frequent, tests are dominated by slow end-to-end flows, or business rules are spread across controllers and repositories. If those symptoms are not present, a disciplined layered approach may remain a fine choice.
-
-\needspace{3\baselineskip}
+When the investment is justified, hexagonal architecture delivers several structural advantages:
 \begin{itemize}
-    \item If your focus is initially on the database, the layered approach makes sense.
-    \item If your focus is initially on the business logic, the hexagonal approach makes sense, as you can focus on the services and the ports, and then add the adapters later.
+    \item \textbf{Adapter replaceability:} persistence, messaging, and external APIs can be swapped without rewriting use cases, as motivated in Section~\ref{sec:hexagonal_why},
+    \item \textbf{Testability through explicit seams:} we can invoke inbound ports with fake driven adapters, as in Section~\ref{sec:hexagonal_why_ports_testability} and Code snippet~\ref{lst:confirm-detection-test},
+    \item \textbf{Core-owned outbound contracts:} ports express what use cases \textit{require}, not what infrastructure \textit{provides}, as discussed in Section~\ref{sec:hexagonal_requires_vs_provides},
+    \item \textbf{Deferred infrastructure decisions:} we can implement and validate behaviour before committing to a database, broker, or sensor protocol, as in Section~\ref{sec:hexagonal_delay_decisions},
+    \item \textbf{Multiple driving adapters:} a \texttt{REST} controller, \texttt{CLI} handler, \texttt{GUI} controller, or message consumer can share the same use case through inbound ports, as in Section~\ref{sec:hexagonal_step2},
+    \item \textbf{Multiple driven adapter implementations:} several adapters can implement the same outbound port, and composition or configuration decides which one is used. In Section~\ref{sec:hexagonal_example}, multiple \texttt{SensorDriver} adapters satisfy one port for different sensor types; the same idea applies when notifications may go out by email, \texttt{SMS}, or a message broker through one port such as \texttt{PublishKaijuConfirmedPort}. For software that is sold to different customers, each deployment can wire its own adapter without changing core use cases,
+    \item and \textbf{Enforceable dependency direction:} package and import rules can align with the architecture, as shown in Figure~\ref{fig:hex_package_diagram}.
 \end{itemize}
 
-In the end, the difference is not so much in the architecture, but in the focus.
+\subsection{Costs}
+\label{sec:hexagonal_cons}
 
-\subsection{Incremental Migration Steps}
-\label{sec:hexagonal_migration_steps}
+Those benefits come with real costs that teams should expect upfront:
+\begin{itemize}
+    \item \textbf{Ceremony:} extra ports, adapters, commands (though, optional), DTOs, and mapping code compared with a thinner layered style,
+    \item \textbf{More files to navigate:} one feature often spans core, ports, and adapters, and layer-folder layout can scatter code that changes together; see Section~\ref{sec:hexagonal_layers_vs_features} for feature-folder and vertical-slice mitigations,
+    \item \textbf{Slower early velocity} on simple CRUD where rules and integrations stay stable,
+    \item \textbf{Learning and onboarding cost:} ports, adapters, and dependency direction must be understood and maintained,
+    \item \textbf{Payoff depends on discipline:} without enforced boundaries, structure becomes ceremony, as noted in Section~\ref{sec:hexagonal_common_mistakes},
+    \item and \textbf{Risk of over-structuring} small or short-lived systems that will not grow in complexity.
+\end{itemize}
 
-We can migrate incrementally instead of rewriting everything:
-\begin{enumerate}
-    \item select one high-value use case (for example \texttt{ConfirmKaijuDetection}),
-    \item define an input port and required output ports for that use case,
-    \item move business logic into an application service behind the input port,
-    \item wrap current repository or API integrations as driven adapters,
-    \item add fast core tests that use fake output ports,
-    \item then repeat use case by use case.
-\end{enumerate}
+\subsection{Things to Consider Before Deciding}
+\label{sec:hexagonal_when_to_choose}
 
-What we essentially do here is create a port owned by the core, and then implement it with a driven adapter.
+Before adopting hexagonal architecture, it helps to match the style to the problem and the team. The lists below are not rigid rules, but practical signals.
+
+Favour hexagonal architecture when:
+\begin{itemize}
+    \item business workflows and rules change frequently,
+    \item the domain has non-trivial invariants or coordination, such as linking a \texttt{Kaiju} to its origin \texttt{Breach},
+    \item there are multiple or volatile integration points, such as sensor drivers, payment APIs, or message brokers,
+    \item you need several ways to trigger the same behaviour, for example a Web API, a batch job, and a \texttt{CLI},
+    \item isolated, fast tests of business rules matter,
+    \item and the system is expected to live long enough for replaceability to matter.
+\end{itemize}
+
+Question or defer hexagonal architecture when:
+\begin{itemize}
+    \item the system is mostly stable CRUD with few rules,
+    \item there is one delivery mechanism and one database with little churn,
+    \item the team cannot realistically enforce import and package rules,
+    \item you are building a throwaway prototype or very small internal tool,
+    \item and added interfaces would mostly duplicate pass-through calls with no real seams.
+\end{itemize}
+
+When uncertain, compare the signals in both lists and choose the lightest structure that still protects the behaviour you care about. You can also start hexagonal in a minimal form, perhaps one use case with a few ports, and deepen the model as complexity grows, without treating the style as something to migrate into from elsewhere.
 
 \subsection{Common Implementation Mistakes}
 \label{sec:hexagonal_common_mistakes}
 
-Even with a good structure, implementations can drift. Typical mistakes include:
+Even with a good structure, implementations can drift. Ports and adapter folders are not enough on their own; the mistakes below usually show up as broken dependency direction, behaviour in the wrong layer, or structure that looks hexagonal but behaves like a layered architecture.
+
+The first group of mistakes leaks infrastructure concerns into the core:
 \begin{itemize}
     \item placing framework annotations in core domain models and use cases,
     \item exposing \texttt{JPA} entities directly across the core boundary,
-    \item defining repository interfaces around provider capabilities rather than use-case needs,
-    \item and embedding HTTP or SQL concerns in application services.
+    \item defining repository interfaces around provider capabilities rather than use-case needs, as discussed in Section~\ref{sec:hexagonal_requires_vs_provides},
+    \item embedding \texttt{HTTP} or \texttt{SQL} concerns in application services,
+    \item letting the application core import concrete adapter classes instead of depending only on ports, which inverts the dependency rule shown in Figure~\ref{fig:hex_package_diagram},
+    \item and surfacing infrastructure exceptions or types, for example \texttt{SQLException} or \texttt{HTTP} status codes, from use cases instead of domain- or application-level errors.
 \end{itemize}
+
+The next group breaks the intended flow between driving adapters, use cases, and driven adapters:
+\begin{itemize}
+    \item driving adapters calling outbound ports directly and bypassing the use case, which recreates a thin-controller layered application with extra folders,
+    \item putting business rules in controllers or persistence adapters while application services only delegate, i.e. fat adapters and an anemic core,
+    \item passing transport or persistence DTOs into use cases instead of mapping to commands and results at the adapter edge, as in Code snippet~\ref{lst:kaiju-controller},
+    \item returning domain entities or persistence models from inbound ports when the outward contract should be explicit DTOs, as with \texttt{EstimatedArea} in Code snippet~\ref{lst:triangulate-port},
+    \item and treating a REST controller, or similar driving adapter, as the inbound port rather than as one adapter behind a separate port interface.
+\end{itemize}
+
+Finally, some mistakes come from structure without discipline:
+\begin{itemize}
+    \item adopting port and adapter folder names while import direction still violates the architecture,
+    \item sharing one outbound port across unrelated features so a change for one use case breaks others,
+    \item testing only through \texttt{HTTP} or a running database instead of invoking inbound ports with fake driven adapters, as in Section~\ref{sec:hexagonal_why_ports_testability} and Code snippet~\ref{lst:confirm-detection-test},
+    \item and applying full hexagonal structure to simple CRUD with little changing behavior, despite the trade-offs noted in Section~\ref{sec:hexagonal_tradeoffs}.
+\end{itemize}
+
+Most of these mistakes are variations on the same theme: the core should express what a use case \textit{requires}, and adapters should translate and implement those requirements. When that rule holds, the extra interfaces and mapping code from earlier in this chapter pay off; when it does not, the architecture adds ceremony without improving testability or replaceability.
+
+\needspace{8\baselineskip}
+\subsection{Closing Thoughts}
+\label{sec:hexagonal_closing}
+
+Hexagonal architecture organizes an application around one simple split: behaviour on the inside, technology on the outside. In this chapter we built that split step by step, starting with use cases in Section~\ref{sec:hexagonal_step1}, adding driving adapters and inbound ports in Section~\ref{sec:hexagonal_step2}, then driven adapters and outbound ports in Section~\ref{sec:hexagonal_step3}, and optionally a domain model in Section~\ref{sec:hexagonal_step4}. 
+
+We then looked at package layout in Section~\ref{sec:hexagonal_package_layout}, and worked through two examples: \texttt{ConfirmKaijuDetectionService} for the basic shape, and the triangulation use case in Section~\ref{sec:hexagonal_example} for richer integration complexity. Throughout, the governing idea from Section~\ref{sec:hexagonal_requires_vs_provides} stayed the same: ports are contracts the core owns, and adapters translate at the edges.
+
+That structure is a deliberate choice, not a default for every system, as discussed in Section~\ref{sec:hexagonal_when_to_choose}. It pays off when dependency direction is enforced in code and imports, as in Figure~\ref{fig:hex_package_diagram}, and when we test behaviour through inbound ports, as in Section~\ref{sec:hexagonal_why_ports_testability}. 
+
+Hexagonal and layered architecture share the goal of separating behaviour from technology; hexagonal makes that separation explicit through ports and adapters, while layered architecture organizes code by technical role. 
+
+Feature folders or vertical slices, as in Section~\ref{sec:hexagonal_layers_vs_features}, can improve navigation without abandoning ports. In the end, the extra interfaces and mapping code earn their cost when boundaries are enforced, not merely named.
