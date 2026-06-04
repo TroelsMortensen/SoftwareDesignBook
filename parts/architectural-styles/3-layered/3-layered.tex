@@ -630,7 +630,8 @@ public final class GetMissionBriefingService {
 
     public MissionKaijuBriefingView getBriefing(MissionId missionId) {
         MissionEntity mission = missionDao.findById(missionId).orElseThrow();
-        if (!Set.of("Briefed", "Deployed").contains(mission.getStatus())) {
+        if (!Set.of("Briefed", "Deployed").contains(mission.getStatus())) 
+        {
             throw new IllegalStateException("Briefing not available");
         }
         KaijuEntity kaiju = kaijuDao.findByMissionId(missionId).orElseThrow();

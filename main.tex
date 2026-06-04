@@ -50,18 +50,20 @@
     % --- 3. CODE STYLING (Listings) ---
     \usepackage{listings}
 
-    % Java dialect for ridercode: no morestring=[b]" (breaks on """ text blocks); """…""" as comment.
+    % Java dialect for ridercode: register """ before " so text blocks parse as one string.
     \lstdefinelanguage{JavaBook}{%
         morekeywords={abstract,boolean,break,byte,case,catch,char,class,%
             const,continue,default,do,double,else,extends,false,final,%
             finally,float,for,goto,if,implements,import,instanceof,int,%
             interface,label,long,native,new,null,package,private,protected,%
-            public,return,short,static,super,switch,synchronized,this,throw,%
-            throws,transient,true,try,void,volatile,while},%
+            public,record,return,short,static,super,switch,synchronized,this,%
+            throw,throws,transient,true,try,var,void,volatile,while,%
+            Optional,Set,Supplier},%
         sensitive,%
         morecomment=[l]//,%
         morecomment=[s]{/*}{*/},%
-        morecomment=[s]{"""}{"""},%
+        morestring=[b]{"""},%
+        morestring=[b]",%
         morestring=[b]',%
     }
 
@@ -71,7 +73,7 @@
         stringstyle=\color{rs_string},
         basicstyle=\ttfamily\small\color{rs_text},
         breakatwhitespace=false,
-        breaklines=true,
+        breaklines=false,
         numbers=left,
         numberstyle=\tiny\color{rs_linenos},
         numbersep=10pt,
@@ -79,7 +81,7 @@
         tabsize=4,
         keywordstyle=\color{rs_keyword},
         % Use ! for escaping to LaTeX - it's much safer than UTF-8 symbols like §
-        escapeinside={!}{!},
+        %escapeinside={!}{!},
         inputencoding=utf8,
         extendedchars=true
     }
