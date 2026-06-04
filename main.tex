@@ -72,8 +72,9 @@
     \usepackage[most]{tcolorbox}
     \tcbuselibrary{listings}
 
-    \newcounter{listing}
-    \numberwithin{listing}{chapter}
+    % Caption counter must not be "listing" (clashes with tcolorbox \jobname.listing sidecar).
+    \newcounter{codesnippet}
+    \numberwithin{codesnippet}{chapter}
     \newtcblisting{ridercode}[2][]{
         enhanced,
         arc=5pt,
@@ -82,6 +83,8 @@
         colframe=rs_border,
         left=22pt,
         listing only,
+        listing file=\jobname-tcb.rider,
+        listing style=rider_style,
         listing engine=listings,
         listing options={
             style=rider_style,
@@ -91,18 +94,16 @@
     }
 
     \usepackage{caption}
-    \DeclareCaptionType{listing}[Code snippet][List of code snippets]
-    \numberwithin{listing}{chapter}
-    % Optional: match figure caption look
-    \captionsetup[listing]{
+    \DeclareCaptionType{codesnippet}[Code snippet][List of code snippets]
+    \captionsetup[codesnippet]{
         font=small,
         labelfont=bf,
         labelsep=colon,
-        skip=4pt,                    % match typical figure gap; try 6pt–10pt
-        belowskip=1.0\baselineskip, 
+        skip=4pt,
+        belowskip=1.0\baselineskip,
     }
-    
-    \providecommand*{\listingautorefname}{Code snippet}
+
+    \providecommand*{\codesnippetautorefname}{Code snippet}
 
     \addbibresource{references.bib}
 
@@ -123,6 +124,24 @@
     \date{\today}
 
     \begin{document}
+
+    \tcbset{
+        listing only,
+        reset@listingscore/.style={
+            listing file=\jobname-tcb.rider,
+            comment=,
+            listing only,
+            no process,
+            freeze none,
+            comment style=,
+            pdf extension=pdf,
+        },
+        reset@listings/.style={
+            listing inputencoding=\inputencodingname,
+            listing remove caption,
+            listing engine=listings,
+        },
+    }
 
     \maketitle
 
