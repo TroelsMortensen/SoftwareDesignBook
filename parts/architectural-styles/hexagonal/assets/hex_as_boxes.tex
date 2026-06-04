@@ -16,8 +16,8 @@
     \node[anchor=south, yshift=2pt] at (app_core.south) {\scriptsize Application Core};
 
     % 2. PORTS
-    \node[port_box, anchor=north west] (in_port) at (app_core.north west) {Input Ports};
-    \node[port_box, anchor=north east] (out_port) at (app_core.north east) {Output Ports};
+    \node[port_box, anchor=north west] (in_port) at (app_core.north west) {Inbound Ports};
+    \node[port_box, anchor=north east] (out_port) at (app_core.north east) {Outbound Ports};
 
     % 3. DOMAIN MODEL - Changed gap from 1.5cm (default) to 0.7cm
     \node[domain_box, below=0.7cm of app_core] (domain) {Domain\\Model};

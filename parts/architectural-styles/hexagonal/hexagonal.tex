@@ -3,6 +3,8 @@
 
 Hexagonal Architecture, also known as \textit{Ports and Adapters}, was introduced by Alistair Cockburn to protect application behavior from infrastructure concerns.\autocite{cockburn2005hexagonal} The key idea is simple: we keep application logic in the center, and let external technologies connect through explicit boundaries. These boundaries are called \textit{ports}, and are generally just interfaces in your code. A modern introduction with practical examples is provided by Huttunen, and has inspired parts of this chapter.\autocite{huttunen2026hexagonal}
 
+In this chapter, a \textit{port} always means an interface: the contract between the core and the adapters. \textit{Inbound ports} are what driving adapters call to invoke a use case; \textit{outbound ports} are what the core calls when it needs infrastructure capabilities. Adapters on the outside are often called \textit{driving} (or primary) and \textit{driven} (or secondary); literature uses several names, but I try stick to inbound and outbound for ports throughout.
+
 In short, the point of hexagonal architecture is to keep a primary focus on the business logic, and allow external technologies to "plug in" to the core system, through interfaces. It is a "solve the business problem"-first approach, rather than a "technology"-first approach.
 
 Whether the system is activated through a GUI, a Web API, a CLI application, or something else, is considered a technical "detail" of the system.
@@ -55,7 +57,7 @@ Logic include many things:
 \begin{itemize}
     \item Validating input data,
     \item Applying business rules,
-    \item Coordinating across output ports,
+    \item Coordinating across outbound ports,
     \item and persisting the results.
 \end{itemize}
 
@@ -64,18 +66,21 @@ As such, the application core is the heart of the application, and over time, it
 \subsection{What We Delay on Purpose}
 \label{sec:hexagonal_delay_decisions}
 
-We deliberately delay technology choices. This gives us two benefits:
+We deliberately delay technology choices. This gives us three benefits:
 \begin{itemize}
     \item We can validate business behavior early without waiting for full infrastructure setup.
     \item We avoid coupling use-case logic to framework types and transport protocols.
+    \item and we can define outbound port interfaces from the use case before any adapter exists, based on what the use case requires.
 \end{itemize}
+
+In practice, that means naming what the core \textit{requires} first. For example, a triangulation use case may need to poll sensors and receive readings long before anyone chooses a vendor protocol or wire format. We declare a \texttt{SensorDriver} outbound port with that capability, implement the use case against the interface using fakes, and add real adapters when integration details are known. This port-first workflow is the same idea as core-owned contracts in Section~\ref{sec:hexagonal_requires_vs_provides}, and we apply it again in Section~\ref{sec:hexagonal_example}.
 
 \subsection{Java Skeleton of the Core}
 \label{sec:hexagonal_java_core_skeleton}
 
 The initial core can be expressed as a use-case-focused Java API and service implementation.
 
-First we need the "entry" interface, i.e. the port that will be used by the driving adapters to invoke the use case. It declares a piece of behaviour the core can execute.
+First we need the "entry" interface, i.e. the inbound port that driving adapters will call to invoke the use case. It declares a piece of behaviour the core can execute.
 
 \needspace{7\baselineskip}
 \begin{ridercode}{Java}
@@ -88,12 +93,12 @@ public interface ConfirmKaijuDetectionPort
 
 }
 \end{ridercode}
-\captionof{listing}{\texttt{ConfirmKaijuDetectionPort} input port}
+\captionof{listing}{\texttt{ConfirmKaijuDetectionPort} inbound port}
 \label{lst:confirm-detection-port}
 
 Next, we have the implementation of the port in Code snippet~\ref{lst:confirm-detection-service}. It is a service class that implements the interface and contains the use-case logic. Here, we confirm a detection by linking a new \texttt{Kaiju} to its origin \texttt{Breach} and persisting it through \texttt{SaveKaijuPort}.
 
-There is also a second output port, \texttt{PublishKaijuConfirmedPort}, implemented by a driven adapter that publishes a mission event. It is similar to the Observer Design Pattern\todoinref{add reference to Observer Pattern}. This event can trigger downstream actions such as command alerts or tracking workflows.
+There is also a second outbound port, \texttt{PublishKaijuConfirmedPort}, implemented by a driven adapter that publishes a mission event. It is similar to the Observer Design Pattern\todoinref{add reference to Observer Pattern}. This event can trigger downstream actions such as command alerts or tracking workflows.
 
 \needspace{16\baselineskip}
 \begin{ridercode}{Java}
@@ -134,18 +139,18 @@ public final class ConfirmKaijuDetectionService
 \captionof{listing}{\texttt{ConfirmKaijuDetectionService} use-case implementation}
 \label{lst:confirm-detection-service}
 
-\section{Step 2: Add Driving Adapters and Input Ports}
+\section{Step 2: Add Driving Adapters and Inbound Ports}
 \label{sec:hexagonal_step2}
 
-Once the core behavior exists, we connect ways to invoke it. These are \textit{driving adapters} (also called primary adapters). Their responsibility is to translate external input into calls on input ports, which are interfaces representing use cases.
+Once the core behavior exists, we connect ways to invoke it. These are \textit{driving adapters} (also called primary adapters). Their responsibility is to translate external input into calls on inbound ports, which are interfaces representing use cases. 
 
-Obviously, multiple driving adapters can be used to invoke the same use case. For example, we could have a REST controller, a CLI handler, and a GUI controller all invoking the same use case. This is why we need the input port, to abstract the use case from the driving adapter. In the below diagram I have kept it simple and reduced the number of arrows from driving adapters to input ports.
+Obviously, multiple driving adapters can be used to invoke the same use case. For example, we could have a REST controller, a CLI handler, and a GUI controller all invoking the same use case. This is why we need the inbound port, to abstract the use case from the driving adapter. In the below diagram I have kept it simple and reduced the number of arrows from driving adapters to inbound ports.
 
 \needspace{16\baselineskip}
 \begin{figure}[htbp]
     \centering
     \input{assets/hex_step3_driving_adapters}
-    \caption{Driving adapters call input ports to invoke application behavior.}
+    \caption{Driving adapters call inbound ports to invoke application behavior.}
     \label{fig:hexagonal_driving_adapters}
 \end{figure}
 
@@ -168,13 +173,13 @@ Common driving adapters include:
     \item a CLI handler translating command arguments into use-case calls,
     \item a GUI presenter/controller translating user events into use-case calls,
     \item a message consumer translating broker events into use-case calls,
-    \item and automated tests that call input ports directly.
+    \item and automated tests that call inbound ports directly.
 \end{itemize}
 
-\subsection{Input Port and Driving Adapter in Java}
+\subsection{Inbound Port and Driving Adapter in Java}
 \label{sec:hexagonal_java_driving_adapter}
 
-Code snippet~\ref{lst:kaiju-controller} shows a driving adapter that talks only to the input port and maps transport-specific models to use-case models:
+Code snippet~\ref{lst:kaiju-controller} shows a driving adapter that talks only to the inbound port and maps transport-specific models to use-case models:
 
 \needspace{16\baselineskip}
 \begin{ridercode}{Java}
@@ -208,15 +213,15 @@ public class KaijuController
 \captionof{listing}{\texttt{KaijuController} REST driving adapter}
 \label{lst:kaiju-controller}
 
-\section{Step 3: Add Driven Adapters and Output Ports}
+\section{Step 3: Add Driven Adapters and Outbound Ports}
 \label{sec:hexagonal_step3}
 
-The core eventually needs support from external capabilities such as storage, notifications, or third-party APIs. We model these needs as output ports, and implement those ports with \textit{driven adapters} (secondary adapters). This is where dependency inversion becomes concrete: the core depends on interfaces (and \textit{owns} those interfaces), while infrastructure depends on those same interfaces.\autocite{fowler2002patterns}
+The core eventually needs support from external capabilities such as storage, notifications, or third-party APIs. We model these needs as outbound ports, and implement those ports with \textit{driven adapters} (secondary adapters). This is where dependency inversion becomes concrete: the core depends on interfaces (and \textit{owns} those interfaces), while infrastructure depends on those same interfaces.\autocite{fowler2002patterns}
 
 \begin{figure}[htbp]
     \centering
     \input{assets/hex_step4_driven_adapters}
-    \caption{Driven adapters implement output ports for infrastructure concerns.}
+    \caption{Driven adapters implement outbound ports for infrastructure concerns.}
     \label{fig:hexagonal_driven_adapters}
 \end{figure}
 
@@ -253,10 +258,10 @@ Typical driven adapters are:
     \item and a publisher adapter for a message broker, like Kafka or RabbitMQ.
 \end{itemize}
 
-\subsection{Output Ports and a Driven Adapter in Java}
+\subsection{Outbound Ports and a Driven Adapter in Java}
 \label{sec:hexagonal_java_driven_adapter}
 
-On the driven side, the core defines output ports, and infrastructure implements them.
+On the driven side, the core already defines outbound ports, and driven adapters implement them.
 
 Let's start with the first outbound port, \texttt{LoadBreachPort} (Code snippet~\ref{lst:load-breach-port}). It is used to load a Breach from storage. I use \texttt{Optional} \todoinref{add reference, when Optional pattern is written} to indicate that the Breach may not be found.
 
@@ -267,7 +272,7 @@ public interface LoadBreachPort
     Optional<Breach> loadById(BreachId breachId);
 }
 \end{ridercode}
-\captionof{listing}{\texttt{LoadBreachPort} output port}
+\captionof{listing}{\texttt{LoadBreachPort} outbound port}
 \label{lst:load-breach-port}
 
 Then the next port, \texttt{SaveKaijuPort} (Code snippet~\ref{lst:save-kaiju-port}), to save a Kaiju entity to the storage (database or other storage). I keep the interfaces small here. But sometimes you may want to group multiple related operations into a single interface. For example, you could have an interface which contains both the save and load operations. 
@@ -371,11 +376,13 @@ When we then organize the code into packages or modules, we apply these dependen
 With this layout, we keep dependency directions explicit:
 \begin{itemize}
     \item \texttt{domain} and \texttt{application} do not depend on \texttt{adapters}.
-    \item \texttt{adapters.in.*} depend on input ports in \texttt{application.port.in} (i.e. the interfaces providing access to the core). Classes in this package are our driving adapters.
-    \item \texttt{application} depends on output ports in \texttt{application.port.out} (i.e. the interfaces that the core defines, to be implemented by the adapters).
-    \item \texttt{adapters.out.*} implement output ports and may depend on framework libraries. Classes in this package are our driven adapters.
+    \item \texttt{adapters.in.*} depend on inbound ports in \texttt{application.ports.in} (i.e. the interfaces providing access to the core). Classes in this package are our driving adapters.
+    \item \texttt{application} depends on outbound ports in \texttt{application.ports.out} (i.e. the interfaces that the core defines, to be implemented by the adapters).
+    \item \texttt{adapters.out.*} implement outbound ports and may depend on framework libraries. Classes in this package are our driven adapters.
     \item \texttt{config} performs wiring and can see both core and adapters.
 \end{itemize}
+
+Package naming makes these rules easier to spot in import statements, but teams can also automate them. For example, architecture tests in Java, such as ArchUnit, can fail the build if \texttt{application} or \texttt{domain} imports adapter packages, or if adapters depend on each other. As noted when discussing package layout, such tests are often straightforward once package roles align with the hexagon.
 
 
 \subsection{Requires vs Provides Contracts}
@@ -385,7 +392,7 @@ The most important design choice on the driven side is contract ownership. This 
 
 In many layered implementations, interfaces are shaped by what the persistence layer \textit{provides}, for example a repository abstraction aligned to ORM operations. That approach can still be effective, and we can still mock those interfaces. The difference is who drives the abstraction: in hexagonal architecture, required core behavior drives the port definition; in provider-oriented layering, available infrastructure capabilities often drive the interface definition.
 
-This distinction matters during development. With core-owned output ports, we can implement and test use cases before deciding the final database, broker, or external API integration.
+This distinction matters during development. With core-owned outbound ports, we can implement and test use cases before deciding the final database, broker, or external API integration.
 
 \tododiagram{I don't like this diagram}
 \begin{figure}[htbp]
@@ -683,7 +690,7 @@ I hope by now you have some kind of understanding of the architecture. Comparing
 
 I will describe the use case, introduce the classes and ports involved, their relationships, and the package layout. I will also provide relevant code snippets. The focus will be on the structure of the code, primarily around the application hex, i.e. the service class. The inbound adapter could just be a Web API endpoint, which is not particularly interesting. And some of the outbound adapters would become too technical to be interesting, for example how to poll the sensors for data. 
 
-Furthermore, the specific purpose of the hexagonal architecture is to focus on the application logic, and treat the external adapters as technical details. You should notice that the shape of the outbound port is defined by what the application service needs. An adapter will then have to figure out how to actually achieve that, for example by connecting to a sensor and polling it for data.
+Furthermore, the specific purpose of the hexagonal architecture is to focus on the application logic, and treat the external adapters as technical details. You should notice that the shape of the outbound port is defined by what the application service \textit{needs}. An adapter will then have to figure out how to actually achieve that, for example by connecting to a sensor and polling it for data. This is the port-first workflow from Section~\ref{sec:hexagonal_delay_decisions}: we agreed on the port contract before anyone committed to a particular sensor protocol.
 
 \subsection{Use Case: Triangulate Kaiju Position}
 
@@ -758,7 +765,7 @@ Then we move on to the application hexagon, where I define services and ports.
 \begin{enumerate}
     \item I need the \texttt{Service} class to implement the use case, \texttt{TriangulateKaijuPositionService}. It will contain the business logic, and will depend on the \texttt{Sensor} entity. It will have a method for executing the use case, which takes a \texttt{Location}, and a \texttt{Radius}. It will return a class, \texttt{EstimatedArea}, to represent the estimated area of the Kaiju. This \texttt{EstimatedArea} is not a domain entity, but just a simple object with a few properties.
     \item The \texttt{Service} class will need to be able to retrieve all sensors within a given radius. I will create a \texttt{SensorRepository} port for this. Remember, a \texttt{Repository} is generally a port which can perform CRUD operations on an entity against a data storage (e.g. database), and the \texttt{Read} operation may optionally take filter parameters, like location and radius. Alternatively, I would define a dedicated port just for this use case.
-    \item The \texttt{Service} class will need to be able to poll the real sensors for data. The \texttt{Sensor} entity is just a \textit{representation} of a real sensor somewhere out in the ocean. The domain is isolated from the outside world, and therefore nothing in the domain can access the outside world, or more specifically, my \texttt{Sensor} entity cannot access the real world sensor. Instead, I need a port to represent the ability to poll the real sensor for data. I will call this port \texttt{SensorDriver}. There will be multiple adapters, which can connect to the real sensors.
+    \item The \texttt{Service} class will need to be able to poll the real sensors for data. The \texttt{Sensor} entity is just a \textit{representation} of a real sensor somewhere out in the ocean. The domain is isolated from the outside world, and therefore nothing in the domain can access the outside world, or more specifically, my \texttt{Sensor} entity cannot access the real world sensor. Instead, I need a port to represent the ability to poll the real sensor for data. I will call this port \texttt{SensorDriver}. The interface is shaped by the use-case need to poll sensors and receive readings, not by any particular vendor protocol; there will be multiple adapters, which can connect to the real sensors.
     \item Because I have different types of sensors, based on the \texttt{Sensor}'s \texttt{SensorType}, there will be a specific adapter of the \texttt{SensorDriver} port for each sensor type. I need a way to figure out which adapter to use. Here comes an interesting problem. I have multiple adapters to the same port, the \texttt{SensorDriver} port. How do I know which adapter to use? I am going to introduce a \texttt{SensorDriverFactory} port, which will be responsible for creating the correct adapter based on the \texttt{SensorType}.
     \item I also need to expose the use case through a port, so I create an interface for the service class, let's call it \texttt{TriangulateKaijuPositionUseCase}.
 \end{enumerate}
@@ -1161,6 +1168,8 @@ void confirmsDetectionAndPublishesEvent()
 \label{lst:confirm-detection-test}
 
 In the previous piece of code, I used specific \textit{save} and \textit{load} ports. Often, these are combined into a single port, i.e. a \textit{repository}, \todoinref{add reference to repository pattern} or Data Access Object \todoinref{add reference to Data Access Object pattern}.
+
+That choice is a matter of port granularity. Fine-grained, use-case-shaped ports such as \texttt{LoadBreachPort} and \texttt{SaveKaijuPort} express exactly what one use case needs. A shared \texttt{SensorRepository} makes sense when several use cases perform CRUD on the same entity. Alternatively, a dedicated port such as \textit{find sensors within radius} avoids exposing full CRUD when the use case only needs one query. In all cases, shape the port by what the use case \textit{requires}, as in Section~\ref{sec:hexagonal_requires_vs_provides}; a repository is a reasonable choice when multiple use cases genuinely share the same persistence operations, not as a default CRUD port for every entity.
 
 \section{Practical Trade-offs}
 \label{sec:hexagonal_tradeoffs}
