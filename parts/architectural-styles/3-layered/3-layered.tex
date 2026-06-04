@@ -12,7 +12,7 @@ In the course that accompanies this book, you create database tables and write S
 \subsection{From Two Layers to Three}
 \label{sec:three_layered_from_two_layer}
 
-Chapter~\ref{ch:2_layered} kept business logic in presentation controllers (JavaFX or Web API) while persistence stored domain entities from a shared \texttt{entities} module. Three layers add an explicit \texttt{application} (business logic) layer: controllers stay thin, and services such as \texttt{ConfirmKaijuDetectionService} own rules and transaction sequencing. Persistence entities move under \texttt{persistence} rather than a top-level \texttt{entities} module shared with presentation---see Section~\ref{sec:three_layered_entities_refinement}.
+Chapter~\ref{ch:2_layered} kept business logic in presentation controllers (JavaFX or Web API) while persistence stored domain entities from a shared \texttt{entities} module. Three layers add an explicit \texttt{application} (business logic) layer: controllers stay thin, and services such as \texttt{ConfirmKaijuDetectionService} (Code snippet~\ref{lst:three-layered-confirm-detection-service}) own rules and transaction sequencing. Persistence entities move under \texttt{persistence} rather than a top-level \texttt{entities} module shared with presentation---see Section~\ref{sec:three_layered_entities_refinement}.
 
 \section{Why We Use Data-Centric Three Layers}
 \label{sec:three_layered_why}
@@ -47,10 +47,7 @@ Do not confuse the \textbf{logical layers} in this chapter with a \textbf{physic
 \tododiagram{three-layer stack inside a monolith boundary: presentation, application, persistence, database}
 \begin{figure}[htbp]
 \centering
-\fbox{\parbox{0.75\textwidth}{\centering\vspace{1.8cm}
-\textit{Placeholder: logical three-layer stack}\\[0.4em]
-\small presentation $\rightarrow$ application $\rightarrow$ persistence $\rightarrow$ database
-\vspace{1.8cm}}}
+\diagramplaceholder{presentation $\rightarrow$ application $\rightarrow$ persistence $\rightarrow$ database}
 \caption{Logical three-layer stack inside one deployable application (diagram to be added).}
 \label{fig:three_layered_logical_stack}
 \end{figure}
@@ -96,9 +93,16 @@ Fight leakage \textit{downward} (rules buried in stored procedures) and \textit{
 
 Risks include schema coupling, duplicated read logic, and policy drift when screens grow rules later. Mitigate with read projections owned by data access (or \texttt{dtos}) and revisit the path when business logic appears.
 
-\texttt{Confirm First Kaiju Detection} is \textbf{not} a relaxed read. For \texttt{View Mission Kaiju Briefing}, the thinnest data-access-level assembly variant may use a relaxed path; see Section~\ref{sec:three_layered_view_assembly}.
+\texttt{Confirm First Kaiju Detection} is \textbf{not} a relaxed read. For \texttt{View Mission Kaiju Briefing}, the thinnest data-access-level assembly variant may use a relaxed path; see Section~\ref{sec:three_layered_view_assembly}. Figure~\ref{fig:three_layered_relaxed_reads} contrasts the default write path with the relaxed read exception.
 
+\needspace{12\baselineskip}
 \tododiagram{strict write path vs relaxed read exception (presentation to application to persistence vs presentation to read DAO)}
+\begin{figure}[htbp]
+\centering
+\diagramplaceholder{strict write path vs.\ relaxed read exception}
+\caption{Default write path through the business layer vs.\ relaxed read paths (diagram to be added).}
+\label{fig:three_layered_relaxed_reads}
+\end{figure}
 
 \subsection{A Fowler Variation (Not This Chapter's Anchor)}
 \label{sec:three_layered_fowler_variation}
@@ -118,7 +122,7 @@ For clarity we often refine the bottom of the stack to:
     \item \texttt{presentation -> business logic -> data access -> entities -> database}
 \end{itemize}
 
-\textbf{Entities are not a fourth deployable tier} and presentation must not call them directly. They are \textbf{table-shaped persistence entities}---plain Java classes whose fields align with columns---that the data access layer maps to and from the database using SQL you write. The business layer manipulates those types \textit{through} data access APIs such as \texttt{KaijuDao}, not by reaching past the data access layer into storage.
+\textbf{Entities are not a fourth deployable tier} and presentation must not call them directly. They are \textbf{table-shaped persistence entities}---plain Java classes whose fields align with columns---that the data access layer maps to and from the database using SQL you write. The business layer manipulates those types \textit{through} data access APIs such as \texttt{KaijuDao} (Code snippet~\ref{lst:three-layered-dao-contracts}), not by reaching past the data access layer into storage.
 
 In packages, entities belong \textit{inside} data access, for example \texttt{persistence.entities}, not as a top-level sibling module at the solution root (contrast Chapter~\ref{ch:2_layered}, where a separate \texttt{entities} module was a stepping stone for small systems).
 
@@ -163,7 +167,7 @@ A simplified relational sketch:
     \item \texttt{mission(id, status, ...)} for briefing state (for example \texttt{Briefed}, \texttt{Deployed})
 \end{itemize}
 
-We map these tables to entity classes in \texttt{persistence.entities}. Field names mirror the columns in the \texttt{CREATE TABLE} scripts you write. Close alignment between tables and entity classes is a \textbf{feature} in data-centric systems: it keeps transactional CRUD predictable.\autocite{microsoft2003layered}
+We map these tables to entity classes in \texttt{persistence.entities}; Code snippet~\ref{lst:three-layered-kaiju-entity} shows the shape for \texttt{kaiju}. Field names mirror the columns in the \texttt{CREATE TABLE} scripts you write. Close alignment between tables and entity classes is a \textbf{feature} in data-centric systems: it keeps transactional CRUD predictable.\autocite{microsoft2003layered}
 
 \needspace{14\baselineskip}
 \begin{ridercode}{Java}
@@ -187,7 +191,7 @@ The data access layer exposes DAOs defined from storage needs. The business laye
 
 Contracts are often \textit{provider-shaped}: interfaces mirror what storage already offers (\texttt{findById}, \texttt{save}) because the data access layer defines them from tables first. That is mockable and effective for data-centric work.
 
-A table-shaped method fits when the schema supports it: \texttt{KaijuDao.findByMissionId(...)} because \texttt{kaiju.mission\_id} links a Kaiju to a mission. A use-case-shaped need such as \textit{find all sensors within radius of a breach} does not map cleanly to one table method---the DAO starts to fight the vocabulary the use case needs. That friction is a signal to evolve toward core-owned ports (Chapter~\ref{ch:hexagonal}), not a reason to abandon DAOs for straightforward CRUD.
+A table-shaped method fits when the schema supports it: \texttt{KaijuDao.findByMissionId(...)} in Code snippet~\ref{lst:three-layered-dao-contracts} because \texttt{kaiju.mission\_id} links a Kaiju to a mission. A use-case-shaped need such as \textit{find all sensors within radius of a breach} does not map cleanly to one table method---the DAO starts to fight the vocabulary the use case needs. That friction is a signal to evolve toward core-owned ports (Chapter~\ref{ch:hexagonal}), not a reason to abandon DAOs for straightforward CRUD.
 
 \needspace{18\baselineskip}
 \begin{ridercode}{Java}
@@ -217,7 +221,9 @@ public interface UnitOfWork
 \captionof{codesnippet}{\texttt{BreachDao}, \texttt{KaijuDao}, and \texttt{UnitOfWork} contracts}
 \label{lst:three-layered-dao-contracts}
 
-\needspace{22\baselineskip}
+The JDBC implementations below follow the same pattern: obtain a \texttt{Connection} from \texttt{ConnectionProvider.current()}, run parameterized SQL, and translate \texttt{SQLException} into \texttt{PersistenceException}.
+
+\needspace{14\baselineskip}
 \begin{ridercode}{Java}
 public final class JdbcBreachDao implements BreachDao
 {
@@ -251,7 +257,14 @@ public final class JdbcBreachDao implements BreachDao
         }
     }
 }
+\end{ridercode}
+\captionof{codesnippet}{\texttt{JdbcBreachDao.findById}}
+\label{lst:three-layered-jdbc-breach-dao}
 
+\texttt{JdbcBreachDao.findById} is a read-only lookup: a single \texttt{SELECT} with one bind parameter, returning \texttt{Optional.empty()} when no row exists.
+
+\needspace{14\baselineskip}
+\begin{ridercode}{Java}
 public final class JdbcKaijuDao implements KaijuDao
 {
     private final ConnectionProvider connections;
@@ -287,7 +300,14 @@ public final class JdbcKaijuDao implements KaijuDao
         }
     }
 }
+\end{ridercode}
+\captionof{codesnippet}{\texttt{JdbcKaijuDao.save}}
+\label{lst:three-layered-jdbc-kaiju-dao-save}
 
+\texttt{JdbcKaijuDao.save} performs an \texttt{INSERT} whose columns mirror \texttt{KaijuEntity}. The comment on \texttt{connections.current()} matters: the DAO must not close the connection while \texttt{UnitOfWork} still owns the transaction.
+
+\needspace{14\baselineskip}
+\begin{ridercode}{Java}
 public final class JdbcUnitOfWork implements UnitOfWork
 {
     private final ConnectionProvider connections;
@@ -324,7 +344,14 @@ public final class JdbcUnitOfWork implements UnitOfWork
         }
     }
 }
+\end{ridercode}
+\captionof{codesnippet}{\texttt{JdbcUnitOfWork.execute}}
+\label{lst:three-layered-jdbc-unit-of-work}
 
+\texttt{JdbcUnitOfWork.execute} opens the connection, disables auto-commit, binds it for nested DAO calls, and commits or rolls back on success or failure.
+
+\needspace{10\baselineskip}
+\begin{ridercode}{Java}
 public interface ConnectionProvider
 {
 
@@ -338,10 +365,10 @@ public interface ConnectionProvider
 
 }
 \end{ridercode}
-\captionof{codesnippet}{JDBC DAOs and Unit of Work}
-\label{lst:three-layered-jdbc-daos-uow}
+\captionof{codesnippet}{\texttt{ConnectionProvider}}
+\label{lst:three-layered-connection-provider}
 
-Code snippet~\ref{lst:three-layered-jdbc-daos-uow} shows \texttt{JdbcBreachDao.findById}, \texttt{JdbcKaijuDao.save}, \texttt{JdbcUnitOfWork}, and \texttt{ConnectionProvider}. \texttt{ConnectionProvider} supplies the JDBC \texttt{Connection} for the current unit of work: \texttt{open} and \texttt{bind} for \texttt{JdbcUnitOfWork}, \texttt{current} for DAOs in the same transaction. DAO implementations must not close a connection obtained from \texttt{current()} while the unit of work is still active.
+In Code snippet~\ref{lst:three-layered-connection-provider}, \texttt{ConnectionProvider} supplies the JDBC \texttt{Connection} for the current unit of work: \texttt{open} and \texttt{bind} for \texttt{JdbcUnitOfWork}, \texttt{current} for DAOs in the same transaction. DAO implementations must not close a connection obtained from \texttt{current()} while the unit of work is still active.
 
 \subsection{Database Constraints and Business Rules}
 \label{sec:three_layered_db_constraints}
@@ -353,19 +380,17 @@ Use the database for \textbf{structural integrity} and the business layer for \t
     \item \textbf{Avoid:} triggers or stored procedures that encode policy (Section~\ref{sec:three_layered_guardrails}).
 \end{itemize}
 
-For \texttt{Confirm First Kaiju Detection}, the service checks that the origin breach exists before insert; the foreign key on \texttt{origin\_breach\_id} still protects integrity if two requests race. Prefer friendly errors from the service; let the database enforce what must never be violated.
+For \texttt{Confirm First Kaiju Detection}, the service in Code snippet~\ref{lst:three-layered-confirm-detection-service} checks that the origin breach exists before insert; the foreign key on \texttt{origin\_breach\_id} still protects integrity if two requests race. Prefer friendly errors from the service; let the database enforce what must never be violated.
 
 \section{Step 2: Business Logic Layer}
 \label{sec:three_layered_step2}
 
 With data structures in place, we write business services that load and save through the data access layer and enforce procedural rules. For \texttt{Confirm First Kaiju Detection}, the service validates that the origin breach exists, constructs a new Kaiju record shape, and persists it inside a transaction.
 
-The business layer knows entity shapes because the data access layer exposed them---not because we modeled the use case in a vacuum first.
+The business layer knows entity shapes because the data access layer exposed them (Code snippet~\ref{lst:three-layered-kaiju-entity})---not because we modeled the use case in a vacuum first.
 
 \subsection{Transaction Script Services}
 \label{sec:three_layered_transaction_script}
-
-\texttt{ConfirmKaijuDetectionService} follows Fowler's \textbf{Transaction Script} pattern: a procedural script over DAOs with one use case per method.\autocite{fowler2002patterns} \todoinref{add reference to Transaction Script pattern chapter when written}
 
 Table-shaped types in \texttt{persistence.entities} are intentionally \textbf{anemic} in this style---data containers with little or no behavior. Rules and sequencing live in services (and helpers such as \texttt{factory} or \texttt{assembler}), not in entity methods. That differs from Fowler's domain-layer variation in Section~\ref{sec:three_layered_fowler_variation}, where behavior may live in a model that is not tied one-to-one to tables.
 
@@ -406,12 +431,21 @@ public final class ConfirmKaijuDetectionService
 \captionof{codesnippet}{\texttt{ConfirmKaijuDetectionService} transaction script}
 \label{lst:three-layered-confirm-detection-service}
 
+Code snippet~\ref{lst:three-layered-confirm-detection-service} follows Fowler's \textbf{Transaction Script} pattern: a procedural script over the DAOs in Code snippet~\ref{lst:three-layered-dao-contracts}, with one use case per method.\autocite{fowler2002patterns} \todoinref{add reference to Transaction Script pattern chapter when written}
+
 \section{Step 3: Presentation Layer}
 \label{sec:three_layered_step3}
 
+\needspace{12\baselineskip}
 \tododiagram{write use case flow: presentation controller to ConfirmKaijuDetectionService to DAOs to database}
+\begin{figure}[htbp]
+\centering
+\diagramplaceholder{KaijuController $\rightarrow$ ConfirmKaijuDetectionService $\rightarrow$ DAOs $\rightarrow$ database}
+\caption{\texttt{Confirm First Kaiju Detection} write flow through the layers (diagram to be added).}
+\label{fig:three_layered_confirm_write_flow}
+\end{figure}
 
-Finally we expose business services to users. The presentation layer stays thin: parse input, call the business service, format the response. It must not embed business rules or call DAOs directly.
+Finally we expose business services to users. Figure~\ref{fig:three_layered_confirm_write_flow} summarizes the write path for \texttt{Confirm First Kaiju Detection}. The presentation layer stays thin: parse input, call the business service, format the response. It must not embed business rules or call DAOs directly.
 
 The examples use \textbf{Spring MVC} annotations (\texttt{@RestController}, \texttt{@PostMapping}) as one common way to expose HTTP in Java. The architectural rule is thin adapters that delegate to services---not Spring itself. The same structure applies with other web frameworks or with non-HTTP entry points (Section~\ref{sec:three_layered_other_channels}).
 
@@ -419,6 +453,8 @@ Typed request and response records can live in \texttt{presentation.web} at firs
 
 \subsection{Presentation Mapping Example in Java}
 \label{sec:three_layered_presentation_mapping_java}
+
+Code snippet~\ref{lst:three-layered-kaiju-controller} shows a thin REST adapter: it maps HTTP input to service parameters and delegates to Code snippet~\ref{lst:three-layered-confirm-detection-service}.
 
 \needspace{16\baselineskip}
 \begin{ridercode}{Java}
@@ -458,7 +494,7 @@ public class KaijuController
 \subsection{Other Driving Entry Points}
 \label{sec:three_layered_other_channels}
 
-Presentation is any \textbf{driving} entry point that translates outside interaction into calls the business layer understands. In this chapter we use a REST controller because three-layered systems in the course are usually exposed through HTTP. The same \texttt{ConfirmKaijuDetectionService} could equally be invoked from a CLI handler, a scheduled job, or a message consumer: keep the adapter thin, delegate to the service, and do not call DAOs directly on writes. Business rules stay in \texttt{application}; only the transport changes.
+Presentation is any \textbf{driving} entry point that translates outside interaction into calls the business layer understands. In this chapter we use a REST controller (Code snippet~\ref{lst:three-layered-kaiju-controller}) because three-layered systems in the course are usually exposed through HTTP. The same business service (Code snippet~\ref{lst:three-layered-confirm-detection-service}) could equally be invoked from a CLI handler, a scheduled job, or a message consumer: keep the adapter thin, delegate to the service, and do not call DAOs directly on writes. Business rules stay in \texttt{application}; only the transport changes.
 
 \subsection{Validation, Errors, and Leaky Boundaries}
 \label{sec:three_layered_validation_errors}
@@ -470,7 +506,7 @@ Each layer has a distinct job when input fails or storage rejects a change:
     \item \textbf{Data access} runs SQL and translates \texttt{SQLException} into persistence-layer failures. Map those to business-meaningful errors at the boundary before they reach presentation, rather than leaking raw SQL state upward.
 \end{itemize}
 
-\textbf{Leaky abstractions} appear when layers share the wrong types: \texttt{SQLException} or \texttt{ResultSet} in a controller, HTTP request types in a service, or persistence entities returned directly from REST without a DTO evolution path (Section~\ref{sec:three_layered_dto_module}). The \texttt{orElseThrow()} calls in our examples are placeholders; production code should throw domain- or application-level errors the presentation layer can translate consistently.
+\textbf{Leaky abstractions} appear when layers share the wrong types: \texttt{SQLException} or \texttt{ResultSet} in a controller, HTTP request types in a service, or persistence entities returned directly from REST without a DTO evolution path (Section~\ref{sec:three_layered_dto_module}). The \texttt{orElseThrow()} calls in Code snippets~\ref{lst:three-layered-confirm-detection-service} and~\ref{lst:three-layered-kaiju-controller} are placeholders; production code should throw domain- or application-level errors the presentation layer can translate consistently.
 
 \section{When the Business Layer Grows}
 \label{sec:three_layered_bll_grows}
@@ -487,7 +523,7 @@ The same pattern appears in \texttt{Abyssal Watch}: \texttt{MissionService} (bri
 \subsection{Sibling Helpers Inside the Business Layer}
 \label{sec:three_layered_sublayers_roles}
 
-When logic is real business concern but clutters a service, use sibling packages by \textit{kind} of work: \texttt{factory} (construction and invariants), \texttt{assembler} (combining data for a use case or view), and \texttt{shared} (cross-use-case linkage). A \texttt{KaijuFactory} can enforce \texttt{INV-04}; \texttt{MissionBriefingAssembler} can build the briefing view for Section~\ref{sec:three_layered_view_assembly}; triangulation fusion for \texttt{SCN-03} may live in another \texttt{assembler}. Services still own transaction boundaries and DAO calls.
+When logic is real business concern but clutters a service, use sibling packages by \textit{kind} of work: \texttt{factory} (construction and invariants), \texttt{assembler} (combining data for a use case or view), and \texttt{shared} (cross-use-case linkage). A \texttt{KaijuFactory} can enforce \texttt{INV-04}; \texttt{MissionBriefingAssembler} can build the briefing view in Code snippet~\ref{lst:three-layered-get-briefing-service}; triangulation fusion for \texttt{SCN-03} may live in another \texttt{assembler}. Services still own transaction boundaries and DAO calls.
 
 \textbf{Optional evolution:} when a service method such as \texttt{confirmDetection} accumulates many parameters, Fowler's \textit{Introduce Parameter Object} refactor groups them into one type.\autocite{fowler2018refactoring} That is an alternative to growing a long parameter list; defer it until the signature is genuinely hard to read. \todoinref{add reference to Object Parameter Pattern chapter when written}
 
@@ -533,12 +569,19 @@ Keep types in the right bucket:
     \item \texttt{dtos} --- presentation-facing contracts (Section~\ref{sec:three_layered_dto_module}).
 \end{itemize}
 
+\needspace{12\baselineskip}
 \tododiagram{application sub-package DAG: service to shared, factory, assembler; no service-to-service edges}
+\begin{figure}[htbp]
+\centering
+\diagramplaceholder{service $\rightarrow$ shared, factory, assembler; no service-to-service edges}
+\caption{Directed dependencies inside the \texttt{application} layer (diagram to be added).}
+\label{fig:three_layered_application_dag}
+\end{figure}
 
 \subsection{Layer Packages vs Feature Packages}
 \label{sec:three_layered_layers_vs_features}
 
-The layouts in this chapter use \textbf{layer packages}---\texttt{presentation}, \texttt{application}, \texttt{persistence}---because they match the bottom-up, schema-first workflow students follow: design tables, write JDBC DAOs, add services, then controllers. Layer placement is easy to teach and review.
+The layouts in this chapter use \textbf{layer packages}---\texttt{presentation}, \texttt{application}, \texttt{persistence}---because they match the bottom-up, schema-first workflow students follow: design tables, write JDBC DAOs (Code snippets~\ref{lst:three-layered-jdbc-breach-dao}--\ref{lst:three-layered-connection-provider}), add services, then controllers. Layer placement is easy to teach and review.
 
 \textbf{Feature packages} (or vertical slices) group everything for one capability together, for example \texttt{kaiju.detection} containing controller, service, and DAO for that flow. That helps when one feature changes often and the team wants related code in one place. The trade-off is that technical concerns scatter: SQL, HTTP mapping, and policy for the same story live in different roots unless you discipline sub-structure.
 
@@ -554,14 +597,14 @@ Mapping adds code, but it decouples presentation from table-shaped types exposed
 \subsection{DTO Example in Java}
 \label{sec:three_layered_dto_java}
 
-When API contracts must stay stable while service or entity signatures change, move types such as \texttt{ConfirmKaijuDetectionRequest} and \texttt{ConfirmKaijuDetectionResponse} from \texttt{presentation.web} into a dedicated \texttt{dtos} module (see the \texttt{KaijuController} listing in Step~3 for the baseline shape).
+When API contracts must stay stable while service or entity signatures change, move types such as \texttt{ConfirmKaijuDetectionRequest} and \texttt{ConfirmKaijuDetectionResponse} from \texttt{presentation.web} into a dedicated \texttt{dtos} module (see Code snippet~\ref{lst:three-layered-kaiju-controller} for the baseline shape).
 
 \subsection{Who Maps What}
 \label{sec:three_layered_mapping_boundaries}
 
 Mapping belongs at the boundary that introduces a new representation:
 \begin{itemize}
-    \item \textbf{Presentation} maps HTTP or UI input to service parameters or \texttt{dtos}, and maps results to responses.
+    \item \textbf{Presentation} maps HTTP or UI input to service parameters or \texttt{dtos}, and maps results to responses (Code snippet~\ref{lst:three-layered-kaiju-controller}).
     \item \textbf{Application} maps entity shapes to use-case inputs; \texttt{assembler} helpers compose read models when using business-layer assembly.
     \item \textbf{Data access} maps entities to the database with SQL; read projections for view assembly live here in Approach~A (Section~\ref{sec:three_layered_view_assembly}).
 \end{itemize}
@@ -571,13 +614,27 @@ Avoid passing the same shape through every layer by habit. Add mapping when a tr
 \section{Recommended Package and Module Layout}
 \label{sec:three_layered_package_layout}
 
+\needspace{12\baselineskip}
 \tododiagram{module dependency arrows: presentation to application to persistence; config wires implementations}
+\begin{figure}[htbp]
+\centering
+\diagramplaceholder{presentation $\rightarrow$ application $\rightarrow$ persistence; config wires implementations}
+\caption{Module dependency direction and configuration wiring (diagram to be added).}
+\label{fig:three_layered_module_deps}
+\end{figure}
 
-\textbf{Packages} are compile-time folders inside one project---the default for student work in this book. \textbf{Modules} (Gradle or Maven) add separate compilation units when the codebase grows; they can enforce that \texttt{presentation} does not import \texttt{persistence.jdbc} directly. Layer rules are the same whether you use packages only or split modules.
+\textbf{Packages} are compile-time folders inside one project---the default for student work in this book. \textbf{Modules} (Gradle or Maven) add separate compilation units when the codebase grows; they can enforce that \texttt{presentation} does not import \texttt{persistence.jdbc} directly. Layer rules are the same whether you use packages only or split modules. Figure~\ref{fig:three_layered_module_deps} shows the intended dependency arrows between modules.
 
-Baseline data-centric layout:
-
+\needspace{12\baselineskip}
 \tododiagram{add diagram showing the package layout, as in hexagonal chapter}
+\begin{figure}[htbp]
+\centering
+\diagramplaceholder{baseline three-layer package tree (\texttt{presentation}, \texttt{application}, \texttt{persistence}, \texttt{config})}
+\caption{Baseline package layout for a data-centric three-layer monolith (diagram to be added).}
+\label{fig:three_layered_package_layout}
+\end{figure}
+
+Code snippet~\ref{lst:three-layered-package-baseline} shows the baseline data-centric layout; Figure~\ref{fig:three_layered_package_layout} will mirror it visually (as in the hexagonal chapter).
 
 \needspace{14\baselineskip}
 \begin{ridercode}{Java}
@@ -596,7 +653,7 @@ com.abyssalwatch
 \captionof{codesnippet}{Baseline three-layer package layout}
 \label{lst:three-layered-package-baseline}
 
-When the business layer grows, add sub-packages under \texttt{application} as in Figure~\ref{fig:three_layered_bll_growth}. When API contracts need stability, add a root \texttt{dtos} module:
+When the business layer grows, add sub-packages under \texttt{application} as in Figure~\ref{fig:three_layered_bll_growth}. When API contracts need stability, add a root \texttt{dtos} module (Code snippet~\ref{lst:three-layered-package-dtos}):
 
 \needspace{14\baselineskip}
 \begin{ridercode}{Java}
@@ -616,7 +673,7 @@ com.abyssalwatch
 \captionof{codesnippet}{Package layout with a separate \texttt{dtos} module}
 \label{lst:three-layered-package-dtos}
 
-If requirements expand beyond database access, rename the outer ring to \texttt{infrastructure}:
+If requirements expand beyond database access, rename the outer ring to \texttt{infrastructure} (Code snippet~\ref{lst:three-layered-package-infrastructure}):
 
 \needspace{14\baselineskip}
 \begin{ridercode}{Java}
@@ -652,14 +709,21 @@ Dependency rules:
 
 Read screens often need joined or aggregated data, not a single entity row. We use \texttt{View Mission Kaiju Briefing} as the running read example: for a \texttt{MissionId}, the UI shows mission status, linked Kaiju codename and classification, and the origin breach label---data drawn from \texttt{mission}, \texttt{kaiju}, and \texttt{breach}.
 
-Both assembly strategies below produce the same \texttt{MissionKaijuBriefingView}; they differ in \textit{where} joins and composition happen.\autocite{microsoft2003layered}
+Both assembly strategies below produce the same \texttt{MissionKaijuBriefingView} (Code snippet~\ref{lst:three-layered-briefing-dao}); they differ in \textit{where} joins and composition happen.\autocite{microsoft2003layered} Figure~\ref{fig:three_layered_briefing_assembly} contrasts the two paths.
 
+\needspace{12\baselineskip}
 \tododiagram{Mission Kaiju Briefing: DAL join query path vs BLL multi-DAO assembler path}
+\begin{figure}[htbp]
+\centering
+\diagramplaceholder{Approach A: DAL join query vs.\ Approach B: BLL multi-DAO assembler}
+\caption{\texttt{View Mission Kaiju Briefing}: data-access join path vs.\ business-layer assembly path (diagram to be added).}
+\label{fig:three_layered_briefing_assembly}
+\end{figure}
 
 \subsection{Approach A: Data-Access-Level Assembly}
 \label{sec:three_layered_view_assembly_persistence}
 
-The data access layer offers a DAO method that returns a view projection, often via a single join query:
+In \textbf{Approach~A}, Code snippet~\ref{lst:three-layered-briefing-dao} defines the view record and a DAO method that returns a projection, often via a single join query:
 
 \needspace{16\baselineskip}
 \begin{ridercode}{Java}
@@ -683,9 +747,9 @@ public interface MissionBriefingDao
 \captionof{codesnippet}{\texttt{MissionKaijuBriefingView} and \texttt{MissionBriefingDao}}
 \label{lst:three-layered-briefing-dao}
 
-A \texttt{JdbcMissionBriefingDao} implements that interface with a single \texttt{JOIN} across \texttt{mission}, \texttt{kaiju}, and \texttt{breach}---the SQL lives in \texttt{persistence.jdbc}, not in the business layer.
+A \texttt{JdbcMissionBriefingDao} implements \texttt{MissionBriefingDao} from Code snippet~\ref{lst:three-layered-briefing-dao} with a single \texttt{JOIN} across \texttt{mission}, \texttt{kaiju}, and \texttt{breach}---the SQL lives in \texttt{persistence.jdbc}, not in the business layer.
 
-Presentation may call a thin \texttt{MissionBriefingQueryService} that delegates to the DAO, or---when the read is purely presentational---use a relaxed path (Section~\ref{sec:three_layered_relaxed_reads}) from controller to \texttt{MissionBriefingDao}.
+Presentation may call a thin \texttt{MissionBriefingQueryService} that delegates to the DAO, or---when the read is purely presentational---use a relaxed path (Section~\ref{sec:three_layered_relaxed_reads}) as in Code snippet~\ref{lst:three-layered-briefing-read-controller}.
 
 \needspace{14\baselineskip}
 \begin{ridercode}{Java}
@@ -711,7 +775,7 @@ public class MissionBriefingReadController
 \subsection{Approach B: Business-Layer Assembly}
 \label{sec:three_layered_view_assembly_service}
 
-The business layer loads persistence entities through several DAOs and composes the same view with an \texttt{assembler}, keeping policy explicit:
+In \textbf{Approach~B}, the business layer loads persistence entities through several DAOs and composes the same view with an \texttt{assembler}, keeping policy explicit:
 
 \needspace{22\baselineskip}
 \begin{ridercode}{Java}
@@ -750,7 +814,7 @@ public final class GetMissionBriefingService
 \captionof{codesnippet}{\texttt{GetMissionBriefingService} business-layer assembly}
 \label{lst:three-layered-get-briefing-service}
 
-The same HTTP resource can call the service instead of the DAO directly. Policy (for example allowed mission states) stays in \texttt{GetMissionBriefingService}; the controller only maps the request and response.
+Code snippet~\ref{lst:three-layered-get-briefing-service} loads entities through the DAOs in Code snippet~\ref{lst:three-layered-dao-contracts} and applies briefing policy before assembly. The same HTTP resource can call the service instead of the DAO directly, as in Code snippet~\ref{lst:three-layered-briefing-controller}; the controller only maps the request and response.
 
 \needspace{14\baselineskip}
 \begin{ridercode}{Java}
@@ -777,18 +841,18 @@ public class MissionBriefingController
 \subsection{Same View, Different Trade-offs}
 \label{sec:three_layered_view_assembly_tradeoffs}
 
-\textbf{Approach A} suits stable briefing screens when query efficiency matters: fewer round-trips, database-optimized joins, slimmer business code for read-only flows. Costs: data access absorbs view shapes; DAO APIs multiply as screens evolve.
+\textbf{Approach A} (Code snippets~\ref{lst:three-layered-briefing-dao} and~\ref{lst:three-layered-briefing-read-controller}) suits stable briefing screens when query efficiency matters: fewer round-trips, database-optimized joins, slimmer business code for read-only flows. Costs: data access absorbs view shapes; DAO APIs multiply as screens evolve.
 
-\textbf{Approach B} suits the same \texttt{MissionKaijuBriefingView} when policy and reuse matter: briefing rules (for example allowed mission states) stay in \texttt{GetMissionBriefingService}; data access stays entity-oriented. Costs: more DAO calls unless carefully batched; more coordination code---mitigate with \texttt{MissionBriefingAssembler}.
+\textbf{Approach B} (Code snippets~\ref{lst:three-layered-get-briefing-service} and~\ref{lst:three-layered-briefing-controller}) suits the same view when policy and reuse matter: briefing rules (for example allowed mission states) stay in the service; data access stays entity-oriented. Costs: more DAO calls unless carefully batched; more coordination code---mitigate with \texttt{MissionBriefingAssembler}.
 
 For \texttt{SCN-03 Multi-Scout Triangulation}, non-trivial fusion rules often push assembly into the business layer with a dedicated \texttt{assembler}, even when some sensor reads still come from specialized DAO queries.
 
 \subsection{SQL Pitfalls When the Business Layer Orchestrates Reads}
 \label{sec:three_layered_sql_pitfalls}
 
-Approach~B in \texttt{GetMissionBriefingService} loads \texttt{mission}, \texttt{kaiju}, and \texttt{breach} through separate DAO calls. With JDBC that usually means \textbf{multiple round-trips} to the database---the same class of cost people later call N+1 when using ORMs. For hot read screens, prefer Approach~A's single join query in \texttt{JdbcMissionBriefingDao} unless policy truly belongs in the service.
+Approach~B in Code snippet~\ref{lst:three-layered-get-briefing-service} loads \texttt{mission}, \texttt{kaiju}, and \texttt{breach} through separate DAO calls. With JDBC that usually means \textbf{multiple round-trips} to the database---the same class of cost people later call N+1 when using ORMs. For hot read screens, prefer Approach~A's single join behind Code snippet~\ref{lst:three-layered-briefing-dao} unless policy truly belongs in the service.
 
-\textbf{Connection and transaction scope:} one \texttt{Connection} per unit of work (see \texttt{JdbcUnitOfWork} above). DAOs must use the connection bound for the current transaction; they must not open silent nested transactions or new connections per call inside the same use case.
+\textbf{Connection and transaction scope:} one \texttt{Connection} per unit of work (Code snippet~\ref{lst:three-layered-jdbc-unit-of-work}). DAOs must use the connection bound for the current transaction; they must not open silent nested transactions or new connections per call inside the same use case.
 
 \textbf{Keep SQL behind DAOs:} services receive entities or view records from DAO interfaces---not ad-hoc SQL strings. If a course later adopts JPA or Hibernate, lazy-loading and session-boundary mistakes recreate similar read and transaction bugs; this chapter stays with explicit JDBC so those boundaries remain visible.
 
@@ -813,11 +877,11 @@ As a guideline:
 Testing follows the bottom-up boundaries:
 \begin{itemize}
     \item \textbf{Data access:} integration tests against a real database---verify SQL, entity mapping, and transactions,
-    \item \textbf{Business logic:} tests with fake DAOs that implement the same interfaces as the JDBC implementations,
+    \item \textbf{Business logic:} tests with fake DAOs that implement the same interfaces as Code snippet~\ref{lst:three-layered-dao-contracts},
     \item \textbf{End-to-end:} a small set of full request-to-response flows through presentation.
 \end{itemize}
 
-For \texttt{Confirm First Kaiju Detection}, a focused business-layer test constructs \texttt{ConfirmKaijuDetectionService} with \texttt{FakeBreachDao}, \texttt{FakeKaijuDao}, and an \texttt{ImmediateUnitOfWork}, then asserts the service saved the expected \texttt{KaijuId}. The fakes implement the same DAO interfaces the production layer provides---they are not contracts invented by the business core in isolation.
+For \texttt{Confirm First Kaiju Detection}, a focused business-layer test constructs the service from Code snippet~\ref{lst:three-layered-confirm-detection-service} with \texttt{FakeBreachDao}, \texttt{FakeKaijuDao}, and an \texttt{ImmediateUnitOfWork}, then asserts the service saved the expected \texttt{KaijuId}. The fakes implement the same DAO interfaces as Code snippet~\ref{lst:three-layered-dao-contracts}---they are not contracts invented by the business core in isolation.
 
 \section{When Persistence Becomes Infrastructure}
 \label{sec:three_layered_persistence_to_infrastructure}
@@ -837,7 +901,7 @@ The name \texttt{persistence} fits when the outer layer is mostly database work.
 
 \begin{enumerate}
     \item start with \texttt{persistence} while the schema-led stack is mostly database access,
-    \item rename to \texttt{infrastructure} when multiple technical capabilities are stable,
+    \item rename to \texttt{infrastructure} when multiple technical capabilities are stable (Code snippet~\ref{lst:three-layered-package-infrastructure}),
     \item split by capability: \texttt{infrastructure.persistence}, \texttt{infrastructure.messaging}, and so on.
 \end{enumerate}
 
@@ -847,8 +911,6 @@ The data-centric workflow still begins with storage design; additional adapters 
 \label{sec:three_layered_mission_alert}
 
 \texttt{Confirm First Kaiju Detection} may need to notify command workflows, not only insert a row. The \textbf{decision to alert} stays in the business service; \textbf{delivery} belongs in infrastructure (or \texttt{persistence.messaging} until you rename the outer ring).
-
-Define a narrow interface the application depends on, for example \texttt{KaijuDetectionAlertPublisher}, implemented by an adapter in \texttt{infrastructure.messaging}. The mechanism can be in-process notification, email, or a message bus---this chapter does not prescribe queues or async plumbing; the adapter is replaceable.
 
 \needspace{18\baselineskip}
 \begin{ridercode}{Java}
@@ -897,9 +959,18 @@ public final class ConfirmKaijuDetectionService
 \captionof{codesnippet}{\texttt{KaijuDetectionAlertPublisher} and extended \texttt{ConfirmKaijuDetectionService}}
 \label{lst:three-layered-alert-publisher}
 
-Publishing inside the same unit of work as the database insert can still leave \textbf{inconsistent outcomes}: the row may commit while the alert channel fails afterward, or vice versa if ordering is wrong. Production systems often use an \textbf{outbox} table or transactional messaging so the alert is recorded atomically with the write and delivered reliably later. That machinery is out of scope here; the important placement rule remains: the service decides \textit{whether} to alert, infrastructure delivers it.
+Code snippet~\ref{lst:three-layered-alert-publisher} extends Code snippet~\ref{lst:three-layered-confirm-detection-service} with a narrow \texttt{KaijuDetectionAlertPublisher} interface the application depends on, implemented by an adapter in \texttt{infrastructure.messaging}. The mechanism can be in-process notification, email, or a message bus---this chapter does not prescribe queues or async plumbing; the adapter is replaceable.
 
+Publishing inside the same unit of work as the database insert can still leave \textbf{inconsistent outcomes}: the row may commit while the alert channel fails afterward, or vice versa if ordering is wrong. Production systems often use an \textbf{outbox} table or transactional messaging so the alert is recorded atomically with the write and delivered reliably later. That machinery is out of scope here; the important placement rule remains: the service decides \textit{whether} to alert, infrastructure delivers it. Figure~\ref{fig:three_layered_infrastructure_alert} shows how the service reaches persistence and the alert adapter.
+
+\needspace{12\baselineskip}
 \tododiagram{ConfirmKaijuDetectionService to persistence DAOs and to infrastructure.messaging alert adapter}
+\begin{figure}[htbp]
+\centering
+\diagramplaceholder{ConfirmKaijuDetectionService $\rightarrow$ persistence DAOs and infrastructure.messaging alert adapter}
+\caption{Service dependencies on persistence DAOs and an infrastructure alert adapter (diagram to be added).}
+\label{fig:three_layered_infrastructure_alert}
+\end{figure}
 
 \subsection{Trade-offs and Guardrails}
 \label{sec:three_layered_persistence_to_infrastructure_tradeoffs}
@@ -922,10 +993,10 @@ Avoid turning \texttt{infrastructure} into a dumping ground:
 Suppose \texttt{origin\_breach\_id} on \texttt{kaiju} is renamed to \texttt{breach\_of\_origin\_id}. In a data-centric stack the ripple is predictable:
 \begin{enumerate}
     \item migration script updates the table,
-    \item \texttt{KaijuEntity} and \texttt{KaijuDao} SQL or mapping change,
-    \item \texttt{ConfirmKaijuDetectionService} and any setter calls adjust,
-    \item the REST field on confirm-detection requests may change,
-    \item \texttt{MissionKaijuBriefingView} and \texttt{MissionBriefingDao} join projection update if the briefing query exposed the column.
+    \item Code snippet~\ref{lst:three-layered-kaiju-entity} and \texttt{KaijuDao} SQL in Code snippet~\ref{lst:three-layered-jdbc-kaiju-dao-save} change,
+    \item Code snippet~\ref{lst:three-layered-confirm-detection-service} and any setter calls adjust,
+    \item the REST field in Code snippet~\ref{lst:three-layered-kaiju-controller} may change,
+    \item Code snippet~\ref{lst:three-layered-briefing-dao} join projection updates if the briefing query exposed the column.
 \end{enumerate}
 
 That coupling is a trade-off, not a surprise. When a public API must stay stable through such refactors, introduce or extend \texttt{dtos} (Section~\ref{sec:three_layered_dto_module}). Keep join-heavy mapping in data access; keep policy in services---not in triggers (Section~\ref{sec:three_layered_db_constraints}).
@@ -954,11 +1025,11 @@ Common mistakes:
     \item business rules in controllers or UI components,
     \item orchestration inside DAOs,
     \item treating relaxed reads as the default for every query,
-    \item presentation calling data access directly on writes or policy-heavy reads,
+    \item presentation calling data access directly on writes or policy-heavy reads (contrast Code snippets~\ref{lst:three-layered-kaiju-controller} and~\ref{lst:three-layered-briefing-read-controller}),
     \item logic in stored procedures that should live in the business layer,
     \item exposing raw persistence entities in public APIs without a DTO evolution path,
-    \item alert orchestration in presentation or DAOs instead of the business service plus infrastructure adapter,
-    \item closing the shared \texttt{Connection} inside a DAO while a \texttt{UnitOfWork} is still active,
+    \item alert orchestration in presentation or DAOs instead of the placement in Code snippet~\ref{lst:three-layered-alert-publisher},
+    \item closing the shared \texttt{Connection} inside a DAO while a \texttt{UnitOfWork} is still active (Code snippets~\ref{lst:three-layered-jdbc-kaiju-dao-save} and~\ref{lst:three-layered-jdbc-unit-of-work}),
     \item SQL strings or \texttt{PreparedStatement} usage in services instead of DAOs,
     \item untyped request bodies (for example a generic \texttt{Map}) at the presentation boundary without shape validation.
 \end{itemize}
@@ -973,6 +1044,6 @@ When integration churn, testing friction, or the need for core-owned contracts g
 \subsection{Closing Thoughts}
 \label{sec:three_layered_closing}
 
-This chapter taught \textbf{data-centric three-layered architecture} inside a logical monolith: the relational schema is the anchor, and software grows upward in predictable layers. The journey was intentionally bottom-up: design tables and write SQL, implement JDBC DAOs and persistence entities, add Transaction Script services with explicit transaction boundaries, expose thin REST adapters, then extend the shape when complexity appears---shared helpers and assemblers, optional \texttt{dtos}, infrastructure for alerts, read assembly (join in the DAO vs orchestration in the service), and controlled relaxed reads where policy does not apply. Sections on DTO modules, infrastructure renaming, and advanced read strategies are \textbf{evolution} topics, not day-one requirements.
+This chapter taught \textbf{data-centric three-layered architecture} inside a logical monolith: the relational schema is the anchor, and software grows upward in predictable layers. The journey was intentionally bottom-up: design tables and write SQL, implement JDBC DAOs and persistence entities (Code snippets~\ref{lst:three-layered-kaiju-entity}--\ref{lst:three-layered-connection-provider}), add Transaction Script services (Code snippet~\ref{lst:three-layered-confirm-detection-service}) with explicit transaction boundaries, expose thin REST adapters (Code snippet~\ref{lst:three-layered-kaiju-controller}), then extend the shape when complexity appears---shared helpers and assemblers, optional \texttt{dtos} (Code snippet~\ref{lst:three-layered-package-dtos}), infrastructure for alerts (Code snippet~\ref{lst:three-layered-alert-publisher}), read assembly (Code snippets~\ref{lst:three-layered-briefing-dao}--\ref{lst:three-layered-briefing-controller}), and controlled relaxed reads where policy does not apply. Sections on DTO modules, infrastructure renaming, and advanced read strategies are \textbf{evolution} topics, not day-one requirements.
 
 For your course work, hand-written SQL stays in \texttt{persistence}; layers exist so that SQL, HTTP details, and business policy do not collapse into one place. When provider-shaped DAOs, testing friction, or integration churn grow, hexagonal architecture offers a behavior-first refinement (Section~\ref{sec:three_layered_hexagonal_bridge})---not because layering failed, but because the problem outgrew schema-led defaults. For CRUD-heavy, transactional systems that genuinely center on accurate record capture, the classic three layers remain a strong, teachable default.

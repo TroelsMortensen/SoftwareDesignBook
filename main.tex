@@ -19,6 +19,14 @@
     % Custom TODO for "Add Diagram" (Greenish)
     \newcommand{\tododiagram}[1]{\todo[color=teal!30, size=\scriptsize]{DIAGRAM: #1}}
 
+    % Placeholder box for figures not yet drawn (pair with \tododiagram)
+    \newcommand{\diagramplaceholder}[1]{%
+        \fbox{\parbox{0.75\textwidth}{\centering\vspace{1.5cm}%
+            \textit{Diagram placeholder}\\[0.4em]%
+            \small #1%
+            \vspace{1.5cm}}}%
+    }
+
     % Custom TODO for "In-book Reference" (Bluish)
     \newcommand{\todoinref}[1]{\todo[color=blue!20, size=\scriptsize]{IN-REF: #1}}
 
