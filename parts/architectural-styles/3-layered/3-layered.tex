@@ -168,7 +168,8 @@ We map these tables to entity classes in \texttt{persistence.entities}. Field na
 \needspace{14\baselineskip}
 \begin{ridercode}{Java}
 // persistence.entities - table-shaped entity (no ORM)
-public class KaijuEntity {
+public class KaijuEntity
+{
     private String id;
     private String codename;
     private KaijuClassification classification;
@@ -176,6 +177,8 @@ public class KaijuEntity {
     // constructors, getters, setters omitted
 }
 \end{ridercode}
+\captionof{codesnippet}{\texttt{KaijuEntity} table-shaped persistence entity}
+\label{lst:three-layered-kaiju-entity}
 
 \subsection{DAOs and Unit of Work}
 \label{sec:three_layered_persistence_dao_uow_java}
@@ -188,95 +191,151 @@ A table-shaped method fits when the schema supports it: \texttt{KaijuDao.findByM
 
 \needspace{18\baselineskip}
 \begin{ridercode}{Java}
-public interface BreachDao {
+public interface BreachDao
+{
+
     Optional<BreachEntity> findById(BreachId breachId);
+
 }
 
-public interface KaijuDao {
+public interface KaijuDao
+{
+
     void save(KaijuEntity kaiju);
+
     Optional<KaijuEntity> findByMissionId(MissionId missionId);
+
 }
 
-public interface UnitOfWork {
+public interface UnitOfWork
+{
+
     <T> T execute(Supplier<T> action);
+
 }
 \end{ridercode}
+\captionof{codesnippet}{\texttt{BreachDao}, \texttt{KaijuDao}, and \texttt{UnitOfWork} contracts}
+\label{lst:three-layered-dao-contracts}
 
 \needspace{22\baselineskip}
 \begin{ridercode}{Java}
-public final class JdbcBreachDao implements BreachDao {
+public final class JdbcBreachDao implements BreachDao
+{
     private final ConnectionProvider connections;
 
     @Override
-    public Optional<BreachEntity> findById(BreachId breachId) {
+    public Optional<BreachEntity> findById(BreachId breachId)
+    {
         String sql = "SELECT id FROM breach WHERE id = ?";
         Connection conn = connections.current();
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (PreparedStatement ps = conn.prepareStatement(sql))
+        {
             ps.setString(1, breachId.value());
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) {
+            try (ResultSet rs = ps.executeQuery())
+            {
+                if (!rs.next())
+                {
                     return Optional.empty();
                 }
-                return Optional.of(new BreachEntity(rs.getString("id")));
+                return Optional.of(
+                    new BreachEntity(rs.getString("id"))
+                );
             }
-        } catch (SQLException ex) {
-            throw new PersistenceException("Failed to load breach", ex);
+        }
+        catch (SQLException ex)
+        {
+            throw new PersistenceException(
+                "Failed to load breach",
+                ex
+            );
         }
     }
 }
 
-public final class JdbcKaijuDao implements KaijuDao {
+public final class JdbcKaijuDao implements KaijuDao
+{
     private final ConnectionProvider connections;
 
     @Override
-    public void save(KaijuEntity kaiju) {
+    public void save(KaijuEntity kaiju)
+    {
         String sql = """
-            INSERT INTO kaiju (id, codename, classification, origin_breach_id)
+            INSERT INTO kaiju (
+                id, codename, classification, origin_breach_id
+            )
             VALUES (?, ?, ?, ?)
             """;
         Connection conn = connections.current();
-        // Do not close conn here: UnitOfWork owns the connection lifecycle.
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        // Do not close conn: UnitOfWork owns the lifecycle.
+        try (PreparedStatement ps = conn.prepareStatement(sql))
+        {
             ps.setString(1, kaiju.getId());
             ps.setString(2, kaiju.getCodename());
-            ps.setString(3, kaiju.getClassification().name());
+            ps.setString(
+                3,
+                kaiju.getClassification().name()
+            );
             ps.setString(4, kaiju.getOriginBreachId());
             ps.executeUpdate();
-        } catch (SQLException ex) {
-            throw new PersistenceException("Failed to save kaiju", ex);
+        }
+        catch (SQLException ex)
+        {
+            throw new PersistenceException(
+                "Failed to save kaiju",
+                ex
+            );
         }
     }
 }
 
-public final class JdbcUnitOfWork implements UnitOfWork {
+public final class JdbcUnitOfWork implements UnitOfWork
+{
     private final ConnectionProvider connections;
 
     @Override
-    public <T> T execute(Supplier<T> action) {
-        try (Connection conn = connections.open()) {
+    public <T> T execute(Supplier<T> action)
+    {
+        try (Connection conn = connections.open())
+        {
             conn.setAutoCommit(false);
-            try {
+            try
+            {
                 connections.bind(conn);
                 T result = action.get();
                 conn.commit();
                 return result;
-            } catch (RuntimeException ex) {
+            }
+            catch (RuntimeException ex)
+            {
                 conn.rollback();
                 throw ex;
-            } finally {
+            }
+            finally
+            {
                 connections.unbind();
             }
-        } catch (SQLException ex) {
-            throw new PersistenceException("Transaction failed", ex);
+        }
+        catch (SQLException ex)
+        {
+            throw new PersistenceException(
+                "Transaction failed",
+                ex
+            );
         }
     }
 }
 
-public interface ConnectionProvider {
+public interface ConnectionProvider
+{
+
     Connection open();
+
     void bind(Connection connection);
+
     Connection current();
+
     void unbind();
+
 }
 \end{ridercode}
 \captionof{codesnippet}{JDBC DAOs and Unit of Work}
@@ -315,17 +374,22 @@ Table-shaped types in \texttt{persistence.entities} are intentionally \textbf{an
 
 \needspace{20\baselineskip}
 \begin{ridercode}{Java}
-public final class ConfirmKaijuDetectionService {
+public final class ConfirmKaijuDetectionService
+{
     private final BreachDao breachDao;
     private final KaijuDao kaijuDao;
     private final UnitOfWork unitOfWork;
 
     public KaijuId confirmDetection(
-            String codename,
-            KaijuClassification classification,
-            BreachId originBreachId) {
-        return unitOfWork.execute(() -> {
-            breachDao.findById(originBreachId).orElseThrow();
+        String codename,
+        KaijuClassification classification,
+        BreachId originBreachId
+    )
+    {
+        return unitOfWork.execute(() ->
+        {
+            breachDao.findById(originBreachId)
+                .orElseThrow();
 
             KaijuEntity kaiju = new KaijuEntity();
             kaiju.setId(KaijuId.generate().value());
@@ -339,6 +403,8 @@ public final class ConfirmKaijuDetectionService {
     }
 }
 \end{ridercode}
+\captionof{codesnippet}{\texttt{ConfirmKaijuDetectionService} transaction script}
+\label{lst:three-layered-confirm-detection-service}
 
 \section{Step 3: Presentation Layer}
 \label{sec:three_layered_step3}
@@ -357,30 +423,37 @@ Typed request and response records can live in \texttt{presentation.web} at firs
 \needspace{16\baselineskip}
 \begin{ridercode}{Java}
 public record ConfirmKaijuDetectionRequest(
-        String codename,
-        KaijuClassification classification,
-        BreachId originBreachId) {}
+    String codename,
+    KaijuClassification classification,
+    BreachId originBreachId
+) {}
 
 public record ConfirmKaijuDetectionResponse(String kaijuId) {}
 
 @RestController
 @RequestMapping("/kaiju-detections")
-public class KaijuController {
+public class KaijuController
+{
     private final ConfirmKaijuDetectionService service;
 
     @PostMapping
     public ResponseEntity<ConfirmKaijuDetectionResponse> confirm(
-            @RequestBody ConfirmKaijuDetectionRequest request) {
+        @RequestBody ConfirmKaijuDetectionRequest request
+    )
+    {
         KaijuId id = service.confirmDetection(
-                request.codename(),
-                request.classification(),
-                request.originBreachId());
+            request.codename(),
+            request.classification(),
+            request.originBreachId()
+        );
 
         return ResponseEntity.accepted()
-                .body(new ConfirmKaijuDetectionResponse(id.value()));
+            .body(new ConfirmKaijuDetectionResponse(id.value()));
     }
 }
 \end{ridercode}
+\captionof{codesnippet}{\texttt{KaijuController} REST presentation adapter}
+\label{lst:three-layered-kaiju-controller}
 
 \subsection{Other Driving Entry Points}
 \label{sec:three_layered_other_channels}
@@ -520,6 +593,8 @@ com.abyssalwatch
     jdbc
   config
 \end{ridercode}
+\captionof{codesnippet}{Baseline three-layer package layout}
+\label{lst:three-layered-package-baseline}
 
 When the business layer grows, add sub-packages under \texttt{application} as in Figure~\ref{fig:three_layered_bll_growth}. When API contracts need stability, add a root \texttt{dtos} module:
 
@@ -538,6 +613,8 @@ com.abyssalwatch
   dtos
   config
 \end{ridercode}
+\captionof{codesnippet}{Package layout with a separate \texttt{dtos} module}
+\label{lst:three-layered-package-dtos}
 
 If requirements expand beyond database access, rename the outer ring to \texttt{infrastructure}:
 
@@ -558,6 +635,8 @@ com.abyssalwatch
   dtos
   config
 \end{ridercode}
+\captionof{codesnippet}{Package layout with \texttt{infrastructure} outer ring}
+\label{lst:three-layered-package-infrastructure}
 
 Dependency rules:
 \begin{itemize}
@@ -585,16 +664,24 @@ The data access layer offers a DAO method that returns a view projection, often 
 \needspace{16\baselineskip}
 \begin{ridercode}{Java}
 public record MissionKaijuBriefingView(
-        String missionId,
-        String missionStatus,
-        String kaijuCodename,
-        KaijuClassification kaijuClassification,
-        String originBreachLabel) {}
+    String missionId,
+    String missionStatus,
+    String kaijuCodename,
+    KaijuClassification kaijuClassification,
+    String originBreachLabel
+) {}
 
-public interface MissionBriefingDao {
-    Optional<MissionKaijuBriefingView> findBriefing(MissionId missionId);
+public interface MissionBriefingDao
+{
+
+    Optional<MissionKaijuBriefingView> findBriefing(
+        MissionId missionId
+    );
+
 }
 \end{ridercode}
+\captionof{codesnippet}{\texttt{MissionKaijuBriefingView} and \texttt{MissionBriefingDao}}
+\label{lst:three-layered-briefing-dao}
 
 A \texttt{JdbcMissionBriefingDao} implements that interface with a single \texttt{JOIN} across \texttt{mission}, \texttt{kaiju}, and \texttt{breach}---the SQL lives in \texttt{persistence.jdbc}, not in the business layer.
 
@@ -604,16 +691,22 @@ Presentation may call a thin \texttt{MissionBriefingQueryService} that delegates
 \begin{ridercode}{Java}
 @RestController
 @RequestMapping("/missions")
-public class MissionBriefingReadController {
+public class MissionBriefingReadController
+{
     private final MissionBriefingDao briefingDao;
 
     @GetMapping("/{missionId}/briefing")
-    public MissionKaijuBriefingView briefing(@PathVariable String missionId) {
+    public MissionKaijuBriefingView briefing(
+        @PathVariable String missionId
+    )
+    {
         return briefingDao.findBriefing(new MissionId(missionId))
-                .orElseThrow();
+            .orElseThrow();
     }
 }
 \end{ridercode}
+\captionof{codesnippet}{\texttt{MissionBriefingReadController} data-access read path}
+\label{lst:three-layered-briefing-read-controller}
 
 \subsection{Approach B: Business-Layer Assembly}
 \label{sec:three_layered_view_assembly_service}
@@ -622,25 +715,40 @@ The business layer loads persistence entities through several DAOs and composes 
 
 \needspace{22\baselineskip}
 \begin{ridercode}{Java}
-public final class GetMissionBriefingService {
+public final class GetMissionBriefingService
+{
     private final MissionDao missionDao;
     private final KaijuDao kaijuDao;
     private final BreachDao breachDao;
     private final MissionBriefingAssembler assembler;
 
-    public MissionKaijuBriefingView getBriefing(MissionId missionId) {
-        MissionEntity mission = missionDao.findById(missionId).orElseThrow();
-        if (!Set.of("Briefed", "Deployed").contains(mission.getStatus())) 
+    public MissionKaijuBriefingView getBriefing(
+        MissionId missionId
+    )
+    {
+        MissionEntity mission = missionDao.findById(missionId)
+            .orElseThrow();
+
+        if (!Set.of("Briefed", "Deployed")
+            .contains(mission.getStatus()))
         {
-            throw new IllegalStateException("Briefing not available");
+            throw new IllegalStateException(
+                "Briefing not available"
+            );
         }
-        KaijuEntity kaiju = kaijuDao.findByMissionId(missionId).orElseThrow();
+
+        KaijuEntity kaiju = kaijuDao.findByMissionId(missionId)
+            .orElseThrow();
         BreachEntity breach = breachDao.findById(
-                new BreachId(kaiju.getOriginBreachId())).orElseThrow();
+            new BreachId(kaiju.getOriginBreachId())
+        ).orElseThrow();
+
         return assembler.toView(mission, kaiju, breach);
     }
 }
 \end{ridercode}
+\captionof{codesnippet}{\texttt{GetMissionBriefingService} business-layer assembly}
+\label{lst:three-layered-get-briefing-service}
 
 The same HTTP resource can call the service instead of the DAO directly. Policy (for example allowed mission states) stays in \texttt{GetMissionBriefingService}; the controller only maps the request and response.
 
@@ -648,15 +756,23 @@ The same HTTP resource can call the service instead of the DAO directly. Policy 
 \begin{ridercode}{Java}
 @RestController
 @RequestMapping("/missions")
-public class MissionBriefingController {
+public class MissionBriefingController
+{
     private final GetMissionBriefingService briefingService;
 
     @GetMapping("/{missionId}/briefing")
-    public MissionKaijuBriefingView briefing(@PathVariable String missionId) {
-        return briefingService.getBriefing(new MissionId(missionId));
+    public MissionKaijuBriefingView briefing(
+        @PathVariable String missionId
+    )
+    {
+        return briefingService.getBriefing(
+            new MissionId(missionId)
+        );
     }
 }
 \end{ridercode}
+\captionof{codesnippet}{\texttt{MissionBriefingController} business-layer read path}
+\label{lst:three-layered-briefing-controller}
 
 \subsection{Same View, Different Trade-offs}
 \label{sec:three_layered_view_assembly_tradeoffs}
@@ -736,32 +852,50 @@ Define a narrow interface the application depends on, for example \texttt{KaijuD
 
 \needspace{18\baselineskip}
 \begin{ridercode}{Java}
-public interface KaijuDetectionAlertPublisher {
+public interface KaijuDetectionAlertPublisher
+{
+
     void publish(KaijuDetectedAlert alert);
+
 }
 
-public final class ConfirmKaijuDetectionService {
+public final class ConfirmKaijuDetectionService
+{
     private final BreachDao breachDao;
     private final KaijuDao kaijuDao;
     private final UnitOfWork unitOfWork;
     private final KaijuDetectionAlertPublisher alertPublisher;
 
     public KaijuId confirmDetection(
-            String codename,
-            KaijuClassification classification,
-            BreachId originBreachId) {
-        return unitOfWork.execute(() -> {
-            breachDao.findById(originBreachId).orElseThrow();
+        String codename,
+        KaijuClassification classification,
+        BreachId originBreachId
+    )
+    {
+        return unitOfWork.execute(() ->
+        {
+            breachDao.findById(originBreachId)
+                .orElseThrow();
+
             KaijuEntity kaiju = new KaijuEntity();
             // set fields omitted
+
             kaijuDao.save(kaiju);
-            alertPublisher.publish(new KaijuDetectedAlert(
-                    new KaijuId(kaiju.getId()), originBreachId));
+
+            alertPublisher.publish(
+                new KaijuDetectedAlert(
+                    new KaijuId(kaiju.getId()),
+                    originBreachId
+                )
+            );
+
             return new KaijuId(kaiju.getId());
         });
     }
 }
 \end{ridercode}
+\captionof{codesnippet}{\texttt{KaijuDetectionAlertPublisher} and extended \texttt{ConfirmKaijuDetectionService}}
+\label{lst:three-layered-alert-publisher}
 
 Publishing inside the same unit of work as the database insert can still leave \textbf{inconsistent outcomes}: the row may commit while the alert channel fails afterward, or vice versa if ordering is wrong. Production systems often use an \textbf{outbox} table or transactional messaging so the alert is recorded atomically with the write and delivered reliably later. That machinery is out of scope here; the important placement rule remains: the service decides \textit{whether} to alert, infrastructure delivers it.
 
