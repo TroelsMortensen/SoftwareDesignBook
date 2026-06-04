@@ -623,77 +623,83 @@ Avoid passing the same shape through every layer by habit. Add mapping when a tr
 \label{fig:three_layered_module_deps}
 \end{figure}
 
-\textbf{Packages} are compile-time folders inside one project---the default for student work in this book. \textbf{Modules} (Gradle or Maven) add separate compilation units when the codebase grows; they can enforce that \texttt{presentation} does not import \texttt{persistence.jdbc} directly. Layer rules are the same whether you use packages only or split modules. Figure~\ref{fig:three_layered_module_deps} shows the intended dependency arrows between modules.
+\textbf{Packages} are compile-time folders inside one project---the default for student work in this book. \textbf{Modules} (Gradle or Maven) add separate compilation units when the codebase grows; they can enforce that \texttt{presentation} does not import \texttt{persistence.jdbc} directly. Layer rules are the same whether you use packages only or split modules. Figure~\ref{fig:three_layered_module_deps} shows the intended dependency arrows between modules.\todoinref{float these package diagrams to the right, wrap text on the left, like in hexagonal chapter}
 
 \needspace{12\baselineskip}
-\tododiagram{add diagram showing the package layout, as in hexagonal chapter}
 \begin{figure}[htbp]
 \centering
-\diagramplaceholder{baseline three-layer package tree (\texttt{presentation}, \texttt{application}, \texttt{persistence}, \texttt{config})}
-\caption{Baseline package layout for a data-centric three-layer monolith (diagram to be added).}
+\begin{minipage}{0.8\textwidth}
+\dirtree{%
+.1 \foldericon\ com.abyssalwatch/.
+.2 \foldericon\ presentation/.
+.3 \foldericon\ web/.
+.2 \foldericon\ application/.
+.3 \foldericon\ service/.
+.2 \foldericon\ persistence/.
+.3 \foldericon\ entities/.
+.3 \foldericon\ dao/.
+.3 \foldericon\ unitofwork/.
+.3 \foldericon\ jdbc/.
+.2 \foldericon\ config/.
+}
+\end{minipage}
+\caption{Baseline package layout for a data-centric three-layer monolith.}
 \label{fig:three_layered_package_layout}
 \end{figure}
 
-Code snippet~\ref{lst:three-layered-package-baseline} shows the baseline data-centric layout; Figure~\ref{fig:three_layered_package_layout} will mirror it visually (as in the hexagonal chapter).
+Figure~\ref{fig:three_layered_package_layout} shows the baseline data-centric package layout, you will notice the top level packages are the layers of the architecture: presentation, application, and persistence.
 
-\needspace{14\baselineskip}
-\begin{ridercode}{Java}
-com.abyssalwatch
-  presentation
-    web
-  application
-    service
-  persistence
-    entities
-    dao
-    unitofwork
-    jdbc
-  config
-\end{ridercode}
-\captionof{codesnippet}{Baseline three-layer package layout}
-\label{lst:three-layered-package-baseline}
+When the business layer grows, add sub-packages under \texttt{application} as in Figure~\ref{fig:three_layered_bll_growth}. When API contracts need stability, add a root \texttt{dtos} module (Figure~\ref{fig:three_layered_package_dtos}):
 
-When the business layer grows, add sub-packages under \texttt{application} as in Figure~\ref{fig:three_layered_bll_growth}. When API contracts need stability, add a root \texttt{dtos} module (Code snippet~\ref{lst:three-layered-package-dtos}):
+\needspace{16\baselineskip}
+\begin{figure}[htbp]
+\centering
+\begin{minipage}{0.8\textwidth}
+\dirtree{%
+.1 \foldericon\ com.abyssalwatch/.
+.2 \foldericon\ presentation/.
+.3 \foldericon\ web/.
+.2 \foldericon\ application/.
+.3 \foldericon\ service/.
+.3 \foldericon\ shared/.
+.2 \foldericon\ persistence/.
+.3 \foldericon\ entities/.
+.3 \foldericon\ dao/.
+.3 \foldericon\ jdbc/.
+.2 \foldericon\ dtos/.
+.2 \foldericon\ config/.
+}
+\end{minipage}
+\caption{Package layout with a separate \texttt{dtos} module.}
+\label{fig:three_layered_package_dtos}
+\end{figure}
 
-\needspace{14\baselineskip}
-\begin{ridercode}{Java}
-com.abyssalwatch
-  presentation
-    web
-  application
-    service
-    shared
-  persistence
-    entities
-    dao
-    jdbc
-  dtos
-  config
-\end{ridercode}
-\captionof{codesnippet}{Package layout with a separate \texttt{dtos} module}
-\label{lst:three-layered-package-dtos}
+If requirements expand beyond database access, rename the persistence layer to \texttt{infrastructure} to better reflect its more adverse role (Figure~\ref{fig:three_layered_package_infrastructure}):
 
-If requirements expand beyond database access, rename the outer ring to \texttt{infrastructure} (Code snippet~\ref{lst:three-layered-package-infrastructure}):
-
-\needspace{14\baselineskip}
-\begin{ridercode}{Java}
-com.abyssalwatch
-  presentation
-    web
-  application
-    service
-  infrastructure
-    persistence
-      entities
-      dao
-      jdbc
-    messaging
-    integrations
-  dtos
-  config
-\end{ridercode}
-\captionof{codesnippet}{Package layout with \texttt{infrastructure} outer ring}
-\label{lst:three-layered-package-infrastructure}
+\needspace{16\baselineskip}
+\begin{figure}[htbp]
+\centering
+\begin{minipage}{0.8\textwidth}
+\dirtree{%
+.1 \foldericon\ com.abyssalwatch/.
+.2 \foldericon\ presentation/.
+.3 \foldericon\ web/.
+.2 \foldericon\ application/.
+.3 \foldericon\ service/.
+.2 \foldericon\ infrastructure/.
+.3 \foldericon\ persistence/.
+.4 \foldericon\ entities/.
+.4 \foldericon\ dao/.
+.4 \foldericon\ jdbc/.
+.3 \foldericon\ messaging/.
+.3 \foldericon\ integrations/.
+.2 \foldericon\ dtos/.
+.2 \foldericon\ config/.
+}
+\end{minipage}
+\caption{Package layout with \texttt{infrastructure} outer ring.}
+\label{fig:three_layered_package_infrastructure}
+\end{figure}
 
 Dependency rules:
 \begin{itemize}
@@ -901,7 +907,7 @@ The name \texttt{persistence} fits when the outer layer is mostly database work.
 
 \begin{enumerate}
     \item start with \texttt{persistence} while the schema-led stack is mostly database access,
-    \item rename to \texttt{infrastructure} when multiple technical capabilities are stable (Code snippet~\ref{lst:three-layered-package-infrastructure}),
+    \item rename to \texttt{infrastructure} when multiple technical capabilities are stable (Figure~\ref{fig:three_layered_package_infrastructure}),
     \item split by capability: \texttt{infrastructure.persistence}, \texttt{infrastructure.messaging}, and so on.
 \end{enumerate}
 
@@ -1044,6 +1050,6 @@ When integration churn, testing friction, or the need for core-owned contracts g
 \subsection{Closing Thoughts}
 \label{sec:three_layered_closing}
 
-This chapter taught \textbf{data-centric three-layered architecture} inside a logical monolith: the relational schema is the anchor, and software grows upward in predictable layers. The journey was intentionally bottom-up: design tables and write SQL, implement JDBC DAOs and persistence entities (Code snippets~\ref{lst:three-layered-kaiju-entity}--\ref{lst:three-layered-connection-provider}), add Transaction Script services (Code snippet~\ref{lst:three-layered-confirm-detection-service}) with explicit transaction boundaries, expose thin REST adapters (Code snippet~\ref{lst:three-layered-kaiju-controller}), then extend the shape when complexity appears---shared helpers and assemblers, optional \texttt{dtos} (Code snippet~\ref{lst:three-layered-package-dtos}), infrastructure for alerts (Code snippet~\ref{lst:three-layered-alert-publisher}), read assembly (Code snippets~\ref{lst:three-layered-briefing-dao}--\ref{lst:three-layered-briefing-controller}), and controlled relaxed reads where policy does not apply. Sections on DTO modules, infrastructure renaming, and advanced read strategies are \textbf{evolution} topics, not day-one requirements.
+This chapter taught \textbf{data-centric three-layered architecture} inside a logical monolith: the relational schema is the anchor, and software grows upward in predictable layers. The journey was intentionally bottom-up: design tables and write SQL, implement JDBC DAOs and persistence entities (Code snippets~\ref{lst:three-layered-kaiju-entity}--\ref{lst:three-layered-connection-provider}), add Transaction Script services (Code snippet~\ref{lst:three-layered-confirm-detection-service}) with explicit transaction boundaries, expose thin REST adapters (Code snippet~\ref{lst:three-layered-kaiju-controller}), then extend the shape when complexity appears---shared helpers and assemblers, optional \texttt{dtos} (Figure~\ref{fig:three_layered_package_dtos}), infrastructure for alerts (Code snippet~\ref{lst:three-layered-alert-publisher}), read assembly (Code snippets~\ref{lst:three-layered-briefing-dao}--\ref{lst:three-layered-briefing-controller}), and controlled relaxed reads where policy does not apply. Sections on DTO modules, infrastructure renaming, and advanced read strategies are \textbf{evolution} topics, not day-one requirements.
 
 For your course work, hand-written SQL stays in \texttt{persistence}; layers exist so that SQL, HTTP details, and business policy do not collapse into one place. When provider-shaped DAOs, testing friction, or integration churn grow, hexagonal architecture offers a behavior-first refinement (Section~\ref{sec:three_layered_hexagonal_bridge})---not because layering failed, but because the problem outgrew schema-led defaults. For CRUD-heavy, transactional systems that genuinely center on accurate record capture, the classic three layers remain a strong, teachable default.
