@@ -1,155 +1,126 @@
 \chapter{3-Layered Architecture}
 \label{ch:three_layered}
 
-3-layered architecture is one of the most practical ways to structure business applications. We separate the system into \textit{presentation}, \textit{application}, and \textit{persistence}, so each part has a clear responsibility and can evolve with lower coordination cost. The style is especially useful when we need straightforward delivery with maintainable boundaries.
+This chapter teaches \textit{data-centric three-layered architecture}: a classic way to structure business applications where the relational database schema is the anchor and software is built in layers on top of it.\autocite{microsoft2003layered,microsoftThreeTier} We separate the system into \textit{presentation}, \textit{business logic}, and \textit{data access}, so each part has a clear responsibility. In Java packages we often use the names \texttt{presentation}, \texttt{application} (for the business logic layer), and \texttt{persistence} (for the data access layer).
 
-In this chapter, we use the \texttt{Abyssal Watch} case study and one running use case: \texttt{Confirm First Kaiju Detection}. Later, we compare this structure with hexagonal architecture, where boundaries are oriented around inside/outside contracts instead of horizontal layers.\autocite{fowler2002patterns}
+We apply this style in a \textbf{logical layered monolith}: one deployable application where packages or modules express layers. A formal definition of \textit{layer} appears in a later part of this book.\todoinref{write layer definition chapter (what-is-architecture)} Physical deployment patterns are out of scope here.
 
-\section{Why We Use 3-Layered Architecture}
+In this chapter, we use the \texttt{Abyssal Watch} case study with two running examples: the \textbf{write} use case \texttt{Confirm First Kaiju Detection} (SCN-02) and the \textbf{read} use case \texttt{View Mission Kaiju Briefing}. If you read the 2-layered chapter first, you may have introduced a standalone \texttt{entities} module shared by presentation and persistence. In the classic three-layer style, table-shaped persistence entities live \textit{inside} the data access layer instead; we explain that refinement in Section~\ref{sec:three_layered_entities_refinement}.
+
+In the course that accompanies this book, you create database tables and write SQL yourself. The code snippets therefore use \textbf{persistence entities} (plain Java classes aligned to tables) and \textbf{JDBC DAOs} with hand-written \texttt{PreparedStatement} queries---not an ORM.
+
+\subsection{From Two Layers to Three}
+\label{sec:three_layered_from_two_layer}
+
+Chapter~\ref{ch:2_layered} kept business logic in presentation controllers (JavaFX or Web API) while persistence stored domain entities from a shared \texttt{entities} module. Three layers add an explicit \texttt{application} (business logic) layer: controllers stay thin, and services such as \texttt{ConfirmKaijuDetectionService} own rules and transaction sequencing. Persistence entities move under \texttt{persistence} rather than a top-level \texttt{entities} module shared with presentation---see Section~\ref{sec:three_layered_entities_refinement}.
+
+\section{Why We Use Data-Centric Three Layers}
 \label{sec:three_layered_why}
 
-The main benefit of this style is separation of concerns. We isolate transport and UI concerns in \texttt{presentation}, orchestration and business rules in \texttt{application}, and storage concerns in \texttt{persistence}. This gives teams a shared mental model for where new code should live.
+The main benefit of this style is separation of concerns around \textbf{data management and entity flow}: how records are captured at the top, processed in the middle, and written to tables at the bottom.\autocite{microsoftThreeTier} We isolate user interaction in \texttt{presentation}, procedural rules and transaction sequencing in the business logic layer (\texttt{application}), and SQL and entity mapping in the data access layer (\texttt{persistence}).
 
 The default dependency direction is:
 \begin{itemize}
-    \item \texttt{presentation -> application -> persistence}
+    \item \texttt{presentation -> business logic -> data access -> database}
 \end{itemize}
 
-In practice, this means:
+In practice:
 \begin{itemize}
-    \item \texttt{presentation} translates requests and responses,
-    \item \texttt{application} executes use cases and coordinates work,
-    \item \texttt{persistence} loads and stores data with database-specific mechanisms.
+    \item \texttt{presentation} translates user actions into calls the business layer understands and formats results for humans or APIs,
+    \item the business logic layer sequences reads and writes, enforces rules, and opens transaction boundaries,
+    \item the data access layer converts between table rows and code objects; the database remains the source of truth for stored state.
 \end{itemize}
 
-\section{Step 1: Start with the Application Layer}
-\label{sec:three_layered_step1}
-
-We begin from the application layer because it expresses intent most clearly: what behavior the system must perform for a use case. For \texttt{Confirm First Kaiju Detection}, the service validates mission context, creates a new \texttt{Kaiju}, and coordinates persistence operations.
-
-\subsection{Application Service Example in Java}
-\label{sec:three_layered_application_service_java}
-
-The application service is responsible for orchestration and business flow, not HTTP details and not SQL details.
-
-\needspace{16\baselineskip}
-\begin{ridercode}{Java}
-public final class ConfirmKaijuDetectionService {
-    private final BreachDao breachDao;
-    private final KaijuDao kaijuDao;
-    private final UnitOfWork unitOfWork;
-
-    // Constructor omitted for brevity.
-
-    public KaijuId confirmDetection(ConfirmKaijuDetectionCommand command) {
-        return unitOfWork.execute(() -> {
-            Breach breach = breachDao.findById(command.originBreachId())
-                                     .orElseThrow();
-
-            Kaiju kaiju = Kaiju.confirmed(
-                    command.codename(),
-                    command.classification(),
-                    breach.id());
-
-            kaijuDao.save(kaiju);
-            return kaiju.id();
-        });
-    }
-}
-\end{ridercode}
-
-\section{Application Sub-Layers}
-\label{sec:three_layered_application_sublayers}
-
-For many use cases, the application layer starts as a set of service classes: one class per capability, coordinating entities and persistence abstractions. That is enough for \texttt{Confirm First Kaiju Detection}, where orchestration and a small amount of business flow live in one place.
-
-As the application grows, we often need additional kinds of classes inside \texttt{application}. We organize them into \textit{sub-layers}: logical subdivisions that do not change the top-level dependency rule (\texttt{presentation -> application -> persistence}), but make responsibilities easier to find and evolve.
-
-\subsection{What Is a Sub-Layer?}
-\label{sec:three_layered_sublayers_definition}
-
-A sub-layer is a subdivision \textit{inside} the application layer. It is not a fourth top-level layer. Presentation still depends on application; application still depends on persistence or infrastructure. Sub-layers only refine how we structure code within the middle layer.
-
-\subsection{When the Application Layer Needs More Than Services}
-\label{sec:three_layered_sublayers_when}
-
-We introduce sub-layers when we notice one or more of these signals:
+A useful mental model:\autocite{microsoft2003layered}
 \begin{itemize}
-    \item the same business logic appears in multiple service classes,
-    \item a service method mixes orchestration with substantial calculations or mapping,
-    \item we are tempted to call one application service from another,
-    \item or a new responsibility clearly does not belong in a standard service class.
+    \item \textbf{Presentation} --- the counter clerk: accepts requests and shows results, without deciding business outcomes,
+    \item \textbf{Business logic} --- the kitchen manager: coordinates work, applies rules, and decides what gets stored,
+    \item \textbf{Data access} --- the supply pantry: fetches and puts away stock according to storage layout, without interpreting policy.
 \end{itemize}
 
-Sub-layers are a scaling mechanism. We should not add them on day one; we add them when the flat \texttt{service} package becomes hard to navigate or starts to encourage the wrong dependencies.
+\subsection{Logical Layers vs Physical Tiers}
+\label{sec:three_layered_logical_vs_physical}
 
-\subsection{Breaking Circular Dependencies Between Services}
-\label{sec:three_layered_sublayers_circular}
+Do not confuse the \textbf{logical layers} in this chapter with a \textbf{physical three-tier deployment}. Logical layers are package or module responsibilities inside one deployable application: presentation, business logic, and data access code living in the same process, with dependency rules between them. A physical three-tier setup places presentation, application, and database on separate machines or processes (for example a web server, an app server, and a database server). The names overlap, but the concerns differ: here we teach structure inside the monolith; how you deploy processes is a separate topic. Figure~\ref{fig:three_layered_logical_stack} summarizes the logical stack we build in this chapter.
 
-A common failure mode appears when two use cases need the same cross-cutting logic, but each lives in its own service class.
+\needspace{12\baselineskip}
+\tododiagram{three-layer stack inside a monolith boundary: presentation, application, persistence, database}
+\begin{figure}[htbp]
+\centering
+\fbox{\parbox{0.75\textwidth}{\centering\vspace{1.8cm}
+\textit{Placeholder: logical three-layer stack}\\[0.4em]
+\small presentation $\rightarrow$ application $\rightarrow$ persistence $\rightarrow$ database
+\vspace{1.8cm}}}
+\caption{Logical three-layer stack inside one deployable application (diagram to be added).}
+\label{fig:three_layered_logical_stack}
+\end{figure}
 
-Consider a classic example outside our case study. A \texttt{CustomerService} handles customer-related use cases. An \texttt{OrderService} handles orders. A new feature asks for ``view customer with order history,'' so the developer reuses logic from \texttt{OrderService} inside \texttt{CustomerService}. Later, another feature asks for ``view order with customer details,'' so the developer reuses \texttt{CustomerService} inside \texttt{OrderService}. We now have a circular dependency between application services.
+\subsection{When Data-Centric Three Layers Fit}
+\label{sec:three_layered_when_to_use}
 
-The same pattern appears in \texttt{Abyssal Watch}. A \texttt{MissionService} might expose a mission briefing that includes an active Kaiju tracking summary. A \texttt{KaijuTrackingService} might expose a Kaiju track view that includes mission assignment context. Both need the same mission--Kaiju linkage logic, but from opposite directions. If each service calls the other, we recreate the cycle. Mission workflows and multi-scout triangulation (\texttt{SCN-03}) naturally cross \texttt{Mission} and \texttt{Kaiju} boundaries, which makes this temptation likely as features accumulate.
-
-The sub-layer response is to extract the shared behavior into \texttt{application/shared}. Both services depend on \texttt{shared}; \texttt{shared} must not depend on either service. For example, a \texttt{MissionKaijuContext} helper in \texttt{shared} can resolve linkage data that both briefing and tracking flows need, while each service remains responsible for its own use-case orchestration.
-
-Application services must not depend on each other. Shared behavior belongs in a lower sub-layer or in a sibling helper package, not in a peer service call.
-
-\subsection{Responsibilities That Do Not Fit a Service Class}
-\label{sec:three_layered_sublayers_roles}
-
-Application services should orchestrate: open transaction boundaries, call persistence abstractions, enforce use-case flow, and delegate specialized work. Some responsibilities are real application concerns, but they clutter a service when kept inline. We give them a home in sibling sub-packages grouped by \textit{kind} of work:
+This style is a strong default when:
 \begin{itemize}
-    \item \texttt{command} --- input structures for a use case (already familiar from Step~1),
-    \item \texttt{factory} --- object creation with steps and invariants,
-    \item \texttt{assembler} --- combining data from several sources into a use-case or view-oriented shape.
+    \item the system is CRUD-heavy and transactional, with a stable relational schema at the center,
+    \item the team ships features bottom-up from tables and DAOs,
+    \item onboarding benefits from predictable layer placement rules.
 \end{itemize}
 
-Other teams add packages such as \texttt{validator}, \texttt{policy}, or \texttt{calculator} when the same pattern appears repeatedly. The names matter less than the rule: these packages hold focused logic, not full use-case orchestration.
-
-In \texttt{Abyssal Watch}, confirming a Kaiju must satisfy \texttt{INV-04}: a Kaiju references exactly one origin Breach at first classification. A \texttt{KaijuFactory} in \texttt{factory} can own the construction steps and checks, while \texttt{ConfirmKaijuDetectionService} stays focused on orchestration and persistence coordination.
-
-For multi-scout triangulation (\texttt{SCN-03}), a service should decide \textit{when} to lock a position and \textit{which} observations to include, but fusing readings from multiple Scout Vessels and a Detection Buoy into one result shape is composition work. An \texttt{assembler} sub-layer is a natural home for that mapping. We return to read-path assembly strategies in Section~\ref{sec:three_layered_view_assembly}.
-
-\subsection{Dependencies Within the Application Layer}
-\label{sec:three_layered_sublayers_dependencies}
-
-Top-level layered rules still apply: \texttt{presentation} does not call \texttt{persistence} directly, and business orchestration stays in \texttt{application}. Within \texttt{application}, we apply the same discipline at a finer grain.
-
-Classes in the same sub-layer should not depend on each other. Dependencies flow \textit{downward} from a higher sub-layer to a lower one, or from a service to a sibling helper package. A dependency may skip a sub-layer when that keeps the design simple, but we avoid upward or peer-to-peer calls that recreate cycles.
-
-A practical hierarchy:
-\begin{enumerate}
-    \item \texttt{service} --- use-case orchestration, transaction boundaries, calls to persistence abstractions,
-    \item \texttt{shared} --- cross-cutting application logic reused by multiple services; must not depend on \texttt{service},
-    \item \texttt{factory}, \texttt{assembler}, and \texttt{command} --- sibling helpers used by \texttt{service} (and sometimes by \texttt{shared}); must not depend on \texttt{service}.
-\end{enumerate}
-
-\texttt{shared} sits \textit{below} services because it breaks service-to-service cycles. \texttt{factory}, \texttt{assembler}, and \texttt{command} are \textit{siblings} organized by type of responsibility, not by use-case name.
-
-Services remain the only place that should open transaction boundaries and call DAO or \texttt{UnitOfWork} abstractions directly. Helpers in \texttt{shared}, \texttt{factory}, and \texttt{assembler} work with entities and plain data; the service passes in what they need and applies the result inside a use-case flow.
-
-At the strict end of 3-layered architecture, dependencies do not skip layers: every call from presentation goes through application services, and every persistence access goes through the outer layer. In practice, many codebases are looser. We discuss relaxed layer rules in a later chapter; for now, we treat strict downward flow as the default guardrail.
-
-\subsection{Sub-Layers Versus Optional Modules}
-\label{sec:three_layered_sublayers_modules}
-
-Sub-layers organize code \textit{inside} \texttt{application}. Optional modules such as \texttt{entities} and \texttt{dtos} sit at solution level alongside layers. They solve different problems:
+Signs you may be outgrowing the baseline (without abandoning layering):
 \begin{itemize}
-    \item Sub-layers (\texttt{service}, \texttt{shared}, \texttt{factory}, \texttt{assembler}, \texttt{command}) express \textit{roles} within business orchestration.
-    \item The \texttt{entities} module holds shared nouns and behavior for concepts such as \texttt{Kaiju} and \texttt{Breach} (see Section~\ref{sec:three_layered_entities_module}).
-    \item The \texttt{dtos} module holds stable contracts between \texttt{presentation} and \texttt{application} (see Section~\ref{sec:three_layered_dto_module}).
+    \item business service classes become oversized and hard to test in isolation,
+    \item provider-shaped DAO interfaces fight the vocabulary your use cases need,
+    \item relaxed read shortcuts spread until policy is unclear,
+    \item public API contracts suffer on every schema rename.
 \end{itemize}
 
-Presentation should call application \textit{services}, not \texttt{shared} or \texttt{assembler} directly. Otherwise we bypass use-case orchestration and scatter entry points through the middle layer.
+\subsection{Transitive Dependency and Layer Monopolies}
+\label{sec:three_layered_guardrails}
 
-Do not confuse \texttt{application/shared} with the \texttt{entities} module. \texttt{entities} models what exists in the domain; \texttt{shared} holds application logic that spans multiple use cases or aggregates.
+\textbf{Transitive dependency rule:} presentation must not skip the business logic layer to call the data access layer directly, except in deliberate relaxed read paths (Section~\ref{sec:three_layered_relaxed_reads}). Skipping layers hides dependencies and makes schema changes hard to contain.\autocite{microsoft2003layered}
 
-\subsection{Package Layout With Sub-Layers}
-\label{sec:three_layered_sublayers_layout}
+\textbf{Monopoly rules:}
+\begin{itemize}
+    \item the business logic layer owns business decisions and transaction sequencing,
+    \item the data access layer owns SQL, entity mapping, and persistence mechanics---not business rules,
+    \item presentation owns interaction and formatting---not persistence or policy.
+\end{itemize}
 
-We can grow the application package incrementally. Figure~\ref{fig:three_layered_app_baseline} shows the starting point aligned with Step~1.
+Fight leakage \textit{downward} (rules buried in stored procedures) and \textit{upward} (smart UI widgets or controllers that orchestrate storage).
+
+\subsection{Relaxed Read Paths}
+\label{sec:three_layered_relaxed_reads}
+
+\textbf{Default:} read flows go through the business layer when policy, reuse across channels, or invariant checks matter.
+
+\textbf{Exception:} read-only, presentational lookups with \textit{no} business decision---for example static labels, reference data for dropdowns, or data whose rules were already enforced on a prior write. Allowed shapes include a thin read facade in \texttt{application} or, in the strictest relaxation, \texttt{presentation} calling a specialized read-only DAO or query object. There are still no writes and no transaction orchestration in presentation.
+
+Risks include schema coupling, duplicated read logic, and policy drift when screens grow rules later. Mitigate with read projections owned by data access (or \texttt{dtos}) and revisit the path when business logic appears.
+
+\texttt{Confirm First Kaiju Detection} is \textbf{not} a relaxed read. For \texttt{View Mission Kaiju Briefing}, the thinnest data-access-level assembly variant may use a relaxed path; see Section~\ref{sec:three_layered_view_assembly}.
+
+\tododiagram{strict write path vs relaxed read exception (presentation to application to persistence vs presentation to read DAO)}
+
+\subsection{A Fowler Variation (Not This Chapter's Anchor)}
+\label{sec:three_layered_fowler_variation}
+
+Martin Fowler describes a layered enterprise model with presentation, \textit{domain}, and data source.\autocite{fowler2002patterns} The domain layer can hold rich behavior that is not tied one-to-one to tables. That variation is common and valuable, but it is not the data-centric workflow we teach here. This chapter stays \textbf{schema-first and bottom-up}; a later chapter on hexagonal architecture explores \textbf{behavior-first} design with explicit ports and adapters.
+
+\subsection{The Entities Refinement}
+\label{sec:three_layered_entities_refinement}
+
+We first describe the stack as:
+\begin{itemize}
+    \item \texttt{presentation -> business logic -> data access -> database}
+\end{itemize}
+
+For clarity we often refine the bottom of the stack to:
+\begin{itemize}
+    \item \texttt{presentation -> business logic -> data access -> entities -> database}
+\end{itemize}
+
+\textbf{Entities are not a fourth deployable tier} and presentation must not call them directly. They are \textbf{table-shaped persistence entities}---plain Java classes whose fields align with columns---that the data access layer maps to and from the database using SQL you write. The business layer manipulates those types \textit{through} data access APIs such as \texttt{KaijuDao}, not by reaching past the data access layer into storage.
+
+In packages, entities belong \textit{inside} data access, for example \texttt{persistence.entities}, not as a top-level sibling module at the solution root (contrast Chapter~\ref{ch:2_layered}, where a separate \texttt{entities} module was a stepping stone for small systems).
 
 \needspace{10\baselineskip}
 \begin{figure}[h]
@@ -157,91 +128,241 @@ We can grow the application package incrementally. Figure~\ref{fig:three_layered
 \begin{minipage}{0.8\textwidth}
 \dirtree{%
 .1 \foldericon\ com.abyssalwatch/.
-.2 \foldericon\ application/.
-.3 \foldericon\ service/.
-.3 \foldericon\ command/.
-.2 \foldericon\ presentation/.
 .2 \foldericon\ persistence/.
+.3 \foldericon\ entities/.
+.3 \foldericon\ dao/.
+.3 \foldericon\ jdbc/.
 }
 \end{minipage}
-\caption{Baseline application structure after Step~1.}
-\label{fig:three_layered_app_baseline}
+\caption{Entity types nested under the data access layer, closest to the database.}
+\label{fig:three_layered_dal_entities}
 \end{figure}
 
-When shared logic and specialized responsibilities appear, we add sub-packages under \texttt{application}, as in Figure~\ref{fig:three_layered_app_sublayers}.
+\subsection{Classic Build Order}
+\label{sec:three_layered_build_order}
 
-\needspace{12\baselineskip}
-\begin{figure}[h]
-\centering
-\begin{minipage}{0.8\textwidth}
-\dirtree{%
-.1 \foldericon\ com.abyssalwatch/.
-.2 \foldericon\ application/.
-.3 \foldericon\ service/.
-.3 \foldericon\ shared/.
-.3 \foldericon\ factory/.
-.3 \foldericon\ assembler/.
-.3 \foldericon\ command/.
-.2 \foldericon\ presentation/.
-.2 \foldericon\ persistence/.
-}
-\end{minipage}
-\caption{Application layer with sub-layers for shared logic, factories, and assemblers.}
-\label{fig:three_layered_app_sublayers}
-\end{figure}
+When a team adds a feature in this style, work usually flows \textbf{bottom-up}:\autocite{microsoft2003layered}
+\begin{enumerate}
+    \item design tables and build the data access layer (mapping, DAOs),
+    \item write business services that use those data shapes,
+    \item expose services through UI or API controllers.
+\end{enumerate}
 
-Optional modules remain siblings at the solution root, not nested inside \texttt{application}, as in Figure~\ref{fig:three_layered_app_modules}.
+\section{Step 1: Database and Data Access Layer}
+\label{sec:three_layered_step1}
 
-\needspace{12\baselineskip}
-\begin{figure}[h]
-\centering
-\begin{minipage}{0.8\textwidth}
-\dirtree{%
-.1 \foldericon\ com.abyssalwatch/.
-.2 \foldericon\ application/.
-.3 \foldericon\ service/.
-.3 \foldericon\ shared/.
-.3 \foldericon\ factory/.
-.3 \foldericon\ assembler/.
-.3 \foldericon\ command/.
-.2 \foldericon\ presentation/.
-.2 \foldericon\ persistence/.
-.2 \foldericon\ entities/.
-.2 \foldericon\ dtos/.
-.2 \foldericon\ config/.
-}
-\end{minipage}
-\caption{Sub-layers inside \texttt{application} alongside optional root modules.}
-\label{fig:three_layered_app_modules}
-\end{figure}
+We start with the database because the schema is the blueprint. For \texttt{Confirm First Kaiju Detection} we need at least a \texttt{breach} table and a \texttt{kaiju} table with a foreign key to the origin breach (\texttt{INV-04}). For \texttt{View Mission Kaiju Briefing} (Section~\ref{sec:three_layered_view_assembly}) we also need a \texttt{mission} table linked to the tracked Kaiju.
 
-\subsection{Trade-offs and Common Mistakes}
-\label{sec:three_layered_sublayers_tradeoffs}
+\subsection{Schema and Entity Mapping}
+\label{sec:three_layered_schema_entities}
 
-Sub-layers improve clarity when the application layer is under real pressure. They make it easier to place new code, avoid service cycles, and keep service classes focused on orchestration. Focused packages such as \texttt{shared}, \texttt{factory}, and \texttt{assembler} can also be tested in isolation, without standing up HTTP or a database.
-
-The costs are extra structure and onboarding friction. Teams that introduce sub-layers too early pay ceremony without benefit.
-
-Common mistakes include:
+A simplified relational sketch:
 \begin{itemize}
-    \item dependencies between application services,
-    \item \texttt{shared} depending on \texttt{service},
-    \item HTTP, SQL, or framework types inside \texttt{shared}, \texttt{factory}, or \texttt{assembler},
-    \item creating sub-layers before the flat \texttt{service} package is genuinely hard to work with,
-    \item treating the \texttt{entities} module as a substitute for \texttt{application/shared},
-    \item and presentation calling \texttt{shared} or \texttt{assembler} directly instead of going through a service.
+    \item \texttt{breach(id, ...)}
+    \item \texttt{kaiju(id, codename, classification, origin\_breach\_id, mission\_id, ...)} with \texttt{origin\_breach\_id} referencing \texttt{breach(id)} and \texttt{mission\_id} referencing \texttt{mission(id)} when assigned
+    \item \texttt{mission(id, status, ...)} for briefing state (for example \texttt{Briefed}, \texttt{Deployed})
 \end{itemize}
 
-\section{Step 2: Add the Presentation Layer}
+We map these tables to entity classes in \texttt{persistence.entities}. Field names mirror the columns in the \texttt{CREATE TABLE} scripts you write. Close alignment between tables and entity classes is a \textbf{feature} in data-centric systems: it keeps transactional CRUD predictable.\autocite{microsoft2003layered}
+
+\needspace{14\baselineskip}
+\begin{ridercode}{Java}
+// persistence.entities - table-shaped entity (no ORM)
+public class KaijuEntity {
+    private String id;
+    private String codename;
+    private KaijuClassification classification;
+    private String originBreachId;
+    // constructors, getters, setters omitted
+}
+\end{ridercode}
+
+\subsection{DAOs and Unit of Work}
+\label{sec:three_layered_persistence_dao_uow_java}
+
+The data access layer exposes DAOs defined from storage needs. The business layer depends on these abstractions; SQL and JDBC details stay in \texttt{persistence.jdbc}.
+
+Contracts are often \textit{provider-shaped}: interfaces mirror what storage already offers (\texttt{findById}, \texttt{save}) because the data access layer defines them from tables first. That is mockable and effective for data-centric work.
+
+A table-shaped method fits when the schema supports it: \texttt{KaijuDao.findByMissionId(...)} because \texttt{kaiju.mission\_id} links a Kaiju to a mission. A use-case-shaped need such as \textit{find all sensors within radius of a breach} does not map cleanly to one table method---the DAO starts to fight the vocabulary the use case needs. That friction is a signal to evolve toward core-owned ports (Chapter~\ref{ch:hexagonal}), not a reason to abandon DAOs for straightforward CRUD.
+
+\needspace{18\baselineskip}
+\begin{ridercode}{Java}
+public interface BreachDao {
+    Optional<BreachEntity> findById(BreachId breachId);
+}
+
+public interface KaijuDao {
+    void save(KaijuEntity kaiju);
+    Optional<KaijuEntity> findByMissionId(MissionId missionId);
+}
+
+public interface UnitOfWork {
+    <T> T execute(Supplier<T> action);
+}
+\end{ridercode}
+
+\needspace{22\baselineskip}
+\begin{ridercode}{Java}
+public final class JdbcBreachDao implements BreachDao {
+    private final ConnectionProvider connections;
+
+    @Override
+    public Optional<BreachEntity> findById(BreachId breachId) {
+        String sql = "SELECT id FROM breach WHERE id = ?";
+        Connection conn = connections.current();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, breachId.value());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    return Optional.empty();
+                }
+                return Optional.of(new BreachEntity(rs.getString("id")));
+            }
+        } catch (SQLException ex) {
+            throw new PersistenceException("Failed to load breach", ex);
+        }
+    }
+}
+
+public final class JdbcKaijuDao implements KaijuDao {
+    private final ConnectionProvider connections;
+
+    @Override
+    public void save(KaijuEntity kaiju) {
+        String sql = """
+            INSERT INTO kaiju (id, codename, classification, origin_breach_id)
+            VALUES (?, ?, ?, ?)
+            """;
+        Connection conn = connections.current();
+        // Do not close conn here: UnitOfWork owns the connection lifecycle.
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, kaiju.getId());
+            ps.setString(2, kaiju.getCodename());
+            ps.setString(3, kaiju.getClassification().name());
+            ps.setString(4, kaiju.getOriginBreachId());
+            ps.executeUpdate();
+        } catch (SQLException ex) {
+            throw new PersistenceException("Failed to save kaiju", ex);
+        }
+    }
+}
+
+public final class JdbcUnitOfWork implements UnitOfWork {
+    private final ConnectionProvider connections;
+
+    @Override
+    public <T> T execute(Supplier<T> action) {
+        try (Connection conn = connections.open()) {
+            conn.setAutoCommit(false);
+            try {
+                connections.bind(conn);
+                T result = action.get();
+                conn.commit();
+                return result;
+            } catch (RuntimeException ex) {
+                conn.rollback();
+                throw ex;
+            } finally {
+                connections.unbind();
+            }
+        } catch (SQLException ex) {
+            throw new PersistenceException("Transaction failed", ex);
+        }
+    }
+}
+
+public interface ConnectionProvider {
+    Connection open();
+    void bind(Connection connection);
+    Connection current();
+    void unbind();
+}
+\end{ridercode}
+\captionof{codesnippet}{JDBC DAOs and Unit of Work}
+\label{lst:three-layered-jdbc-daos-uow}
+
+Code snippet~\ref{lst:three-layered-jdbc-daos-uow} shows \texttt{JdbcBreachDao.findById}, \texttt{JdbcKaijuDao.save}, \texttt{JdbcUnitOfWork}, and \texttt{ConnectionProvider}. \texttt{ConnectionProvider} supplies the JDBC \texttt{Connection} for the current unit of work: \texttt{open} and \texttt{bind} for \texttt{JdbcUnitOfWork}, \texttt{current} for DAOs in the same transaction. DAO implementations must not close a connection obtained from \texttt{current()} while the unit of work is still active.
+
+\subsection{Database Constraints and Business Rules}
+\label{sec:three_layered_db_constraints}
+
+Use the database for \textbf{structural integrity} and the business layer for \textbf{policy}:
+\begin{itemize}
+    \item \textbf{Database:} foreign keys (for example \texttt{INV-04} via \texttt{origin\_breach\_id}), \texttt{NOT NULL}, unique indexes---the safety net that still holds under races and alternate callers.
+    \item \textbf{Business layer:} mission state gates, classification rules, and user-facing validation messages---the place that expresses intent.
+    \item \textbf{Avoid:} triggers or stored procedures that encode policy (Section~\ref{sec:three_layered_guardrails}).
+\end{itemize}
+
+For \texttt{Confirm First Kaiju Detection}, the service checks that the origin breach exists before insert; the foreign key on \texttt{origin\_breach\_id} still protects integrity if two requests race. Prefer friendly errors from the service; let the database enforce what must never be violated.
+
+\section{Step 2: Business Logic Layer}
 \label{sec:three_layered_step2}
 
-The presentation layer receives external input and maps it into application commands. In a web API, this usually means converting a request DTO into a command object and returning a response DTO. The presentation layer should stay thin and avoid embedding business rules.
+With data structures in place, we write business services that load and save through the data access layer and enforce procedural rules. For \texttt{Confirm First Kaiju Detection}, the service validates that the origin breach exists, constructs a new Kaiju record shape, and persists it inside a transaction.
+
+The business layer knows entity shapes because the data access layer exposed them---not because we modeled the use case in a vacuum first.
+
+\subsection{Transaction Script Services}
+\label{sec:three_layered_transaction_script}
+
+\texttt{ConfirmKaijuDetectionService} follows Fowler's \textbf{Transaction Script} pattern: a procedural script over DAOs with one use case per method.\autocite{fowler2002patterns} \todoinref{add reference to Transaction Script pattern chapter when written}
+
+Table-shaped types in \texttt{persistence.entities} are intentionally \textbf{anemic} in this style---data containers with little or no behavior. Rules and sequencing live in services (and helpers such as \texttt{factory} or \texttt{assembler}), not in entity methods. That differs from Fowler's domain-layer variation in Section~\ref{sec:three_layered_fowler_variation}, where behavior may live in a model that is not tied one-to-one to tables.
+
+\subsection{Business Service Example in Java}
+\label{sec:three_layered_application_service_java}
+
+\needspace{20\baselineskip}
+\begin{ridercode}{Java}
+public final class ConfirmKaijuDetectionService {
+    private final BreachDao breachDao;
+    private final KaijuDao kaijuDao;
+    private final UnitOfWork unitOfWork;
+
+    public KaijuId confirmDetection(
+            String codename,
+            KaijuClassification classification,
+            BreachId originBreachId) {
+        return unitOfWork.execute(() -> {
+            breachDao.findById(originBreachId).orElseThrow();
+
+            KaijuEntity kaiju = new KaijuEntity();
+            kaiju.setId(KaijuId.generate().value());
+            kaiju.setCodename(codename);
+            kaiju.setClassification(classification);
+            kaiju.setOriginBreachId(originBreachId.value());
+
+            kaijuDao.save(kaiju);
+            return new KaijuId(kaiju.getId());
+        });
+    }
+}
+\end{ridercode}
+
+\section{Step 3: Presentation Layer}
+\label{sec:three_layered_step3}
+
+\tododiagram{write use case flow: presentation controller to ConfirmKaijuDetectionService to DAOs to database}
+
+Finally we expose business services to users. The presentation layer stays thin: parse input, call the business service, format the response. It must not embed business rules or call DAOs directly.
+
+The examples use \textbf{Spring MVC} annotations (\texttt{@RestController}, \texttt{@PostMapping}) as one common way to expose HTTP in Java. The architectural rule is thin adapters that delegate to services---not Spring itself. The same structure applies with other web frameworks or with non-HTTP entry points (Section~\ref{sec:three_layered_other_channels}).
+
+Typed request and response records can live in \texttt{presentation.web} at first, or in a dedicated \texttt{dtos} module when API contracts need stronger isolation (Section~\ref{sec:three_layered_dto_module}).
 
 \subsection{Presentation Mapping Example in Java}
 \label{sec:three_layered_presentation_mapping_java}
 
 \needspace{16\baselineskip}
 \begin{ridercode}{Java}
+public record ConfirmKaijuDetectionRequest(
+        String codename,
+        KaijuClassification classification,
+        BreachId originBreachId) {}
+
+public record ConfirmKaijuDetectionResponse(String kaijuId) {}
+
 @RestController
 @RequestMapping("/kaiju-detections")
 public class KaijuController {
@@ -250,242 +371,334 @@ public class KaijuController {
     @PostMapping
     public ResponseEntity<ConfirmKaijuDetectionResponse> confirm(
             @RequestBody ConfirmKaijuDetectionRequest request) {
-        ConfirmKaijuDetectionCommand command =
-                new ConfirmKaijuDetectionCommand(
-                        request.codename(),
-                        request.classification(),
-                        request.originBreachId());
+        KaijuId id = service.confirmDetection(
+                request.codename(),
+                request.classification(),
+                request.originBreachId());
 
-        KaijuId id = service.confirmDetection(command);
         return ResponseEntity.accepted()
                 .body(new ConfirmKaijuDetectionResponse(id.value()));
     }
 }
 \end{ridercode}
 
-\section{Step 3: Add the Persistence Layer}
-\label{sec:three_layered_step3}
+\subsection{Other Driving Entry Points}
+\label{sec:three_layered_other_channels}
 
-The persistence layer encapsulates data access concerns. In this chapter we assume \texttt{DAO} classes and a \texttt{UnitOfWork} abstraction to make transaction boundaries explicit. The application layer depends on these abstractions, while SQL, ORM mapping, and transaction mechanisms remain in persistence implementations.
+Presentation is any \textbf{driving} entry point that translates outside interaction into calls the business layer understands. In this chapter we use a REST controller because three-layered systems in the course are usually exposed through HTTP. The same \texttt{ConfirmKaijuDetectionService} could equally be invoked from a CLI handler, a scheduled job, or a message consumer: keep the adapter thin, delegate to the service, and do not call DAOs directly on writes. Business rules stay in \texttt{application}; only the transport changes.
 
-\subsection{DAO and Unit of Work Example in Java}
-\label{sec:three_layered_persistence_dao_uow_java}
+\subsection{Validation, Errors, and Leaky Boundaries}
+\label{sec:three_layered_validation_errors}
 
-\needspace{18\baselineskip}
-\begin{ridercode}{Java}
-public interface BreachDao {
-    Optional<Breach> findById(BreachId breachId);
+Each layer has a distinct job when input fails or storage rejects a change:
+\begin{itemize}
+    \item \textbf{Presentation} parses and validates \textit{shape}: required fields, formats, and ranges suitable for HTTP or UI. It maps outcomes to status codes or messages the client sees. It does not decide business policy.
+    \item \textbf{Business logic} enforces \textit{policy}: for example that the origin breach exists before insert (Section~\ref{sec:three_layered_db_constraints}). Prefer clear application exceptions (\texttt{UnknownBreachException}) over generic failures.
+    \item \textbf{Data access} runs SQL and translates \texttt{SQLException} into persistence-layer failures. Map those to business-meaningful errors at the boundary before they reach presentation, rather than leaking raw SQL state upward.
+\end{itemize}
+
+\textbf{Leaky abstractions} appear when layers share the wrong types: \texttt{SQLException} or \texttt{ResultSet} in a controller, HTTP request types in a service, or persistence entities returned directly from REST without a DTO evolution path (Section~\ref{sec:three_layered_dto_module}). The \texttt{orElseThrow()} calls in our examples are placeholders; production code should throw domain- or application-level errors the presentation layer can translate consistently.
+
+\section{When the Business Layer Grows}
+\label{sec:three_layered_bll_grows}
+
+A small system can live in a flat \texttt{application.service} package. \texttt{Confirm First Kaiju Detection} fits that shape. When more use cases arrive, two problems appear: \textbf{service-to-service cycles} and \textbf{responsibilities that do not fit a single service class}.
+
+\subsection{Breaking Cycles Between Services}
+\label{sec:three_layered_sublayers_circular}
+
+A textbook pattern outside our case study: \texttt{CustomerService} and \texttt{OrderService} each grow features that need the other (\texttt{customer with order history} vs.\ \texttt{order with customer details}). Peer service calls create a circular dependency.
+
+The same pattern appears in \texttt{Abyssal Watch}: \texttt{MissionService} (briefing with Kaiju summary) and \texttt{KaijuTrackingService} (track with mission context) may tempt each other into cross-calls. Extract shared linkage logic into \texttt{application.shared}---for example \texttt{MissionKaijuContext}---that both services use. \texttt{shared} must not depend on \texttt{service}, and services must not depend on each other.
+
+\subsection{Sibling Helpers Inside the Business Layer}
+\label{sec:three_layered_sublayers_roles}
+
+When logic is real business concern but clutters a service, use sibling packages by \textit{kind} of work: \texttt{factory} (construction and invariants), \texttt{assembler} (combining data for a use case or view), and \texttt{shared} (cross-use-case linkage). A \texttt{KaijuFactory} can enforce \texttt{INV-04}; \texttt{MissionBriefingAssembler} can build the briefing view for Section~\ref{sec:three_layered_view_assembly}; triangulation fusion for \texttt{SCN-03} may live in another \texttt{assembler}. Services still own transaction boundaries and DAO calls.
+
+\textbf{Optional evolution:} when a service method such as \texttt{confirmDetection} accumulates many parameters, Fowler's \textit{Introduce Parameter Object} refactor groups them into one type.\autocite{fowler2018refactoring} That is an alternative to growing a long parameter list; defer it until the signature is genuinely hard to read. \todoinref{add reference to Object Parameter Pattern chapter when written}
+
+Do not confuse \texttt{application.shared} with \texttt{persistence.entities}: the latter holds table-shaped persistence entities; \texttt{shared} holds cross-use-case business logic. Do not confuse either with \texttt{dtos} (Section~\ref{sec:three_layered_dto_module}), which are presentation-facing contracts.
+
+\needspace{12\baselineskip}
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.8\textwidth}
+\dirtree{%
+.1 \foldericon\ com.abyssalwatch/.
+.2 \foldericon\ application/.
+.3 \foldericon\ service/.
+.3 \foldericon\ shared/.
+.3 \foldericon\ factory/.
+.3 \foldericon\ assembler/.
+.2 \foldericon\ presentation/.
+.2 \foldericon\ persistence/.
+.3 \foldericon\ entities/.
+.3 \foldericon\ dao/.
 }
+\end{minipage}
+\caption{Business layer sub-packages when the flat \texttt{service} package is no longer enough.}
+\label{fig:three_layered_bll_growth}
+\end{figure}
 
-public interface KaijuDao {
-    void save(Kaiju kaiju);
-}
+Introduce sub-packages only when the flat layout is hard to navigate---not on day one.
 
-public interface UnitOfWork {
-    <T> T execute(Supplier<T> action);
-}
+\subsection{Dependencies Inside the Application Layer}
+\label{sec:three_layered_application_deps}
 
-public final class JpaUnitOfWork implements UnitOfWork {
-    @Override
-    public <T> T execute(Supplier<T> action) {
-        // Begin transaction
-        try {
-            T result = action.get();
-            // Commit transaction
-            return result;
-        } catch (RuntimeException ex) {
-            // Roll back transaction
-            throw ex;
-        }
-    }
-}
-\end{ridercode}
+Inside \texttt{application}, dependencies should form a directed acyclic graph:
+\begin{itemize}
+    \item \texttt{service} may depend on \texttt{shared}, \texttt{factory}, and \texttt{assembler},
+    \item \texttt{shared}, \texttt{factory}, and \texttt{assembler} must not depend on \texttt{service},
+    \item services must not depend on each other---extract shared logic (for example \texttt{MissionKaijuContext}) instead.
+\end{itemize}
 
-\section{Optional Module: Entities}
-\label{sec:three_layered_entities_module}
+Keep types in the right bucket:
+\begin{itemize}
+    \item \texttt{persistence.entities} --- table-shaped persistence entities,
+    \item \texttt{application.shared} --- cross-use-case business logic,
+    \item \texttt{dtos} --- presentation-facing contracts (Section~\ref{sec:three_layered_dto_module}).
+\end{itemize}
 
-Strict 3-layered architecture does not require an explicit fourth module for entities, but many teams add one to keep core concepts stable and shared. In \texttt{Abyssal Watch}, entities such as \texttt{Kaiju}, \texttt{Breach}, and \texttt{CommandCarrier} can live in an \texttt{entities} module referenced by both \texttt{application} and \texttt{persistence}.
+\tododiagram{application sub-package DAG: service to shared, factory, assembler; no service-to-service edges}
 
-This gives us a stronger ubiquitous language, but we must protect the model from infrastructure leakage. If entity classes become decorated with persistence framework concerns, we lose the benefit of a clean conceptual model.\autocite{evans2003ddd}
+\subsection{Layer Packages vs Feature Packages}
+\label{sec:three_layered_layers_vs_features}
 
-\section{Optional Module: DTOs}
+The layouts in this chapter use \textbf{layer packages}---\texttt{presentation}, \texttt{application}, \texttt{persistence}---because they match the bottom-up, schema-first workflow students follow: design tables, write JDBC DAOs, add services, then controllers. Layer placement is easy to teach and review.
+
+\textbf{Feature packages} (or vertical slices) group everything for one capability together, for example \texttt{kaiju.detection} containing controller, service, and DAO for that flow. That helps when one feature changes often and the team wants related code in one place. The trade-off is that technical concerns scatter: SQL, HTTP mapping, and policy for the same story live in different roots unless you discipline sub-structure.
+
+A practical hybrid keeps layer roots but adds feature subfolders under \texttt{application.service} when a domain area grows (for example \texttt{service.kaiju}, \texttt{service.mission}). Hexagonal architecture discusses feature-folder trade-offs in more depth (Chapter~\ref{ch:hexagonal}); here layer packages remain the default for data-centric three-layer systems.
+
+\section{Evolution: DTO Module}
 \label{sec:three_layered_dto_module}
 
-A dedicated \texttt{dtos} module is useful when data contracts between \texttt{presentation} and \texttt{application} must be explicit and stable. DTOs help us avoid exposing full entities and allow each use case to define the exact shape needed for input and output.
+A dedicated \texttt{dtos} module is \textbf{not} required for the classic baseline. Add it when HTTP or UI contracts must stay stable while entity or service signatures change---versioning, hiding persistence fields, or shaping responses per use case.
 
-Mapping does introduce extra code, but that cost is often acceptable because it keeps contracts intentional and prevents accidental coupling between view concerns and core models.
+Mapping adds code, but it decouples presentation from table-shaped types exposed by the business and data layers.
 
 \subsection{DTO Example in Java}
 \label{sec:three_layered_dto_java}
 
-\needspace{12\baselineskip}
-\begin{ridercode}{Java}
-public record ConfirmKaijuDetectionRequest(
-        String codename,
-        KaijuClassification classification,
-        BreachId originBreachId) {}
+When API contracts must stay stable while service or entity signatures change, move types such as \texttt{ConfirmKaijuDetectionRequest} and \texttt{ConfirmKaijuDetectionResponse} from \texttt{presentation.web} into a dedicated \texttt{dtos} module (see the \texttt{KaijuController} listing in Step~3 for the baseline shape).
 
-public record ConfirmKaijuDetectionCommand(
-        String codename,
-        KaijuClassification classification,
-        BreachId originBreachId) {}
+\subsection{Who Maps What}
+\label{sec:three_layered_mapping_boundaries}
 
-public record ConfirmKaijuDetectionResponse(String kaijuId) {}
-\end{ridercode}
+Mapping belongs at the boundary that introduces a new representation:
+\begin{itemize}
+    \item \textbf{Presentation} maps HTTP or UI input to service parameters or \texttt{dtos}, and maps results to responses.
+    \item \textbf{Application} maps entity shapes to use-case inputs; \texttt{assembler} helpers compose read models when using business-layer assembly.
+    \item \textbf{Data access} maps entities to the database with SQL; read projections for view assembly live here in Approach~A (Section~\ref{sec:three_layered_view_assembly}).
+\end{itemize}
+
+Avoid passing the same shape through every layer by habit. Add mapping when a transport or storage technology forces a distinct type.
 
 \section{Recommended Package and Module Layout}
 \label{sec:three_layered_package_layout}
 
-When the application layer grows beyond services and commands, see Section~\ref{sec:three_layered_sublayers_layout} for a package layout that includes sub-layers such as \texttt{shared}, \texttt{factory}, and \texttt{assembler}.
+\tododiagram{module dependency arrows: presentation to application to persistence; config wires implementations}
 
-One practical Java layout for the baseline style is:
+\textbf{Packages} are compile-time folders inside one project---the default for student work in this book. \textbf{Modules} (Gradle or Maven) add separate compilation units when the codebase grows; they can enforce that \texttt{presentation} does not import \texttt{persistence.jdbc} directly. Layer rules are the same whether you use packages only or split modules.
+
+Baseline data-centric layout:
 
 \needspace{14\baselineskip}
 \begin{ridercode}{Java}
 com.abyssalwatch
   presentation
     web
-    dto
   application
     service
-    command
   persistence
+    entities
     dao
     unitofwork
-    jpa
-  entities
-  dtos
+    jdbc
   config
 \end{ridercode}
 
-If requirements expand beyond data storage, we can evolve this outer layer from \texttt{persistence} to \texttt{infrastructure}, for example:
+When the business layer grows, add sub-packages under \texttt{application} as in Figure~\ref{fig:three_layered_bll_growth}. When API contracts need stability, add a root \texttt{dtos} module:
 
 \needspace{14\baselineskip}
 \begin{ridercode}{Java}
 com.abyssalwatch
   presentation
     web
-    dto
   application
     service
-    command
-  infrastructure
-    persistence
-      dao
-      unitofwork
-      jpa
-    messaging
-    integrations
-  entities
+    shared
+  persistence
+    entities
+    dao
+    jdbc
   dtos
   config
 \end{ridercode}
 
-Dependency rules for these layouts:
+If requirements expand beyond database access, rename the outer ring to \texttt{infrastructure}:
+
+\needspace{14\baselineskip}
+\begin{ridercode}{Java}
+com.abyssalwatch
+  presentation
+    web
+  application
+    service
+  infrastructure
+    persistence
+      entities
+      dao
+      jdbc
+    messaging
+    integrations
+  dtos
+  config
+\end{ridercode}
+
+Dependency rules:
 \begin{itemize}
-    \item \texttt{presentation} depends on \texttt{application} and \texttt{dtos}.
-    \item \texttt{application} depends on \texttt{entities} and outer-layer abstractions.
-    \item \texttt{persistence} or \texttt{infrastructure} depends on \texttt{entities} and technology implementations.
-    \item \texttt{presentation} should not call the outer layer directly.
-    \item \texttt{config} is allowed to wire all layers.
+    \item \texttt{presentation} depends on \texttt{application} (and \texttt{dtos} when introduced),
+    \item \texttt{application} depends on \texttt{persistence} DAOs and \texttt{UnitOfWork},
+    \item \texttt{persistence} depends on \texttt{persistence.entities} and storage technology,
+    \item \texttt{presentation} must not call \texttt{persistence} directly,
+    \item \texttt{config} wires implementations at startup.
 \end{itemize}
 
 \section{Assembling Data for Views}
 \label{sec:three_layered_view_assembly}
 
-Section~\ref{sec:three_layered_sublayers_roles} introduced the \texttt{assembler} sub-layer as a home for combining data from several sources. Here we compare broader strategies for read paths and view-oriented data.
+Read screens often need joined or aggregated data, not a single entity row. We use \texttt{View Mission Kaiju Briefing} as the running read example: for a \texttt{MissionId}, the UI shows mission status, linked Kaiju codename and classification, and the origin breach label---data drawn from \texttt{mission}, \texttt{kaiju}, and \texttt{breach}.
 
-The data needed by a view is often not identical to a single entity shape. For example, an operations dashboard may require combined information from \texttt{Kaiju}, \texttt{Breach}, and \texttt{CommandCarrier} plus derived metrics. We therefore need an explicit strategy for assembling view data.
+Both assembly strategies below produce the same \texttt{MissionKaijuBriefingView}; they differ in \textit{where} joins and composition happen.\autocite{microsoft2003layered}
 
-\subsection{Approach A: Persistence-Level Assembly}
+\tododiagram{Mission Kaiju Briefing: DAL join query path vs BLL multi-DAO assembler path}
+
+\subsection{Approach A: Data-Access-Level Assembly}
 \label{sec:three_layered_view_assembly_persistence}
 
-In this approach, the persistence layer offers DAO methods that directly return view-oriented projections or DTOs, typically through specialized queries under a \texttt{UnitOfWork} boundary.
+The data access layer offers a DAO method that returns a view projection, often via a single join query:
 
-Advantages:
-\begin{itemize}
-    \item fewer database round-trips for complex views,
-    \item query engines can optimize joins, filtering, and aggregation,
-    \item slimmer orchestration logic in application services.
-\end{itemize}
+\needspace{16\baselineskip}
+\begin{ridercode}{Java}
+public record MissionKaijuBriefingView(
+        String missionId,
+        String missionStatus,
+        String kaijuCodename,
+        KaijuClassification kaijuClassification,
+        String originBreachLabel) {}
 
-Trade-offs:
-\begin{itemize}
-    \item persistence starts to absorb presentation-driven concerns,
-    \item DAO APIs may proliferate as view variants grow,
-    \item changes in view shape can force persistence-level refactoring.
-\end{itemize}
+public interface MissionBriefingDao {
+    Optional<MissionKaijuBriefingView> findBriefing(MissionId missionId);
+}
+\end{ridercode}
 
-\subsection{Approach B: Service-Level Assembly}
+A \texttt{JdbcMissionBriefingDao} implements that interface with a single \texttt{JOIN} across \texttt{mission}, \texttt{kaiju}, and \texttt{breach}---the SQL lives in \texttt{persistence.jdbc}, not in the business layer.
+
+Presentation may call a thin \texttt{MissionBriefingQueryService} that delegates to the DAO, or---when the read is purely presentational---use a relaxed path (Section~\ref{sec:three_layered_relaxed_reads}) from controller to \texttt{MissionBriefingDao}.
+
+\needspace{14\baselineskip}
+\begin{ridercode}{Java}
+@RestController
+@RequestMapping("/missions")
+public class MissionBriefingReadController {
+    private final MissionBriefingDao briefingDao;
+
+    @GetMapping("/{missionId}/briefing")
+    public MissionKaijuBriefingView briefing(@PathVariable String missionId) {
+        return briefingDao.findBriefing(new MissionId(missionId))
+                .orElseThrow();
+    }
+}
+\end{ridercode}
+
+\subsection{Approach B: Business-Layer Assembly}
 \label{sec:three_layered_view_assembly_service}
 
-In this approach, application services call multiple DAOs and assemble a DTO for the presentation layer. The orchestration logic remains close to use-case intent.
+The business layer loads persistence entities through several DAOs and composes the same view with an \texttt{assembler}, keeping policy explicit:
 
-Advantages:
-\begin{itemize}
-    \item assembly rules stay in the application layer where use-case policies live,
-    \item easier reuse across multiple presentation channels,
-    \item persistence remains focused on entity-oriented data access.
-\end{itemize}
+\needspace{22\baselineskip}
+\begin{ridercode}{Java}
+public final class GetMissionBriefingService {
+    private final MissionDao missionDao;
+    private final KaijuDao kaijuDao;
+    private final BreachDao breachDao;
+    private final MissionBriefingAssembler assembler;
 
-Trade-offs:
-\begin{itemize}
-    \item risk of chatty data access and performance regressions,
-    \item more coordination code in services,
-    \item requires discipline to avoid duplicating assembly logic.
-\end{itemize}
+    public MissionKaijuBriefingView getBriefing(MissionId missionId) {
+        MissionEntity mission = missionDao.findById(missionId).orElseThrow();
+        if (!Set.of("Briefed", "Deployed").contains(mission.getStatus())) {
+            throw new IllegalStateException("Briefing not available");
+        }
+        KaijuEntity kaiju = kaijuDao.findByMissionId(missionId).orElseThrow();
+        BreachEntity breach = breachDao.findById(
+                new BreachId(kaiju.getOriginBreachId())).orElseThrow();
+        return assembler.toView(mission, kaiju, breach);
+    }
+}
+\end{ridercode}
+
+The same HTTP resource can call the service instead of the DAO directly. Policy (for example allowed mission states) stays in \texttt{GetMissionBriefingService}; the controller only maps the request and response.
+
+\needspace{14\baselineskip}
+\begin{ridercode}{Java}
+@RestController
+@RequestMapping("/missions")
+public class MissionBriefingController {
+    private final GetMissionBriefingService briefingService;
+
+    @GetMapping("/{missionId}/briefing")
+    public MissionKaijuBriefingView briefing(@PathVariable String missionId) {
+        return briefingService.getBriefing(new MissionId(missionId));
+    }
+}
+\end{ridercode}
+
+\subsection{Same View, Different Trade-offs}
+\label{sec:three_layered_view_assembly_tradeoffs}
+
+\textbf{Approach A} suits stable briefing screens when query efficiency matters: fewer round-trips, database-optimized joins, slimmer business code for read-only flows. Costs: data access absorbs view shapes; DAO APIs multiply as screens evolve.
+
+\textbf{Approach B} suits the same \texttt{MissionKaijuBriefingView} when policy and reuse matter: briefing rules (for example allowed mission states) stay in \texttt{GetMissionBriefingService}; data access stays entity-oriented. Costs: more DAO calls unless carefully batched; more coordination code---mitigate with \texttt{MissionBriefingAssembler}.
+
+For \texttt{SCN-03 Multi-Scout Triangulation}, non-trivial fusion rules often push assembly into the business layer with a dedicated \texttt{assembler}, even when some sensor reads still come from specialized DAO queries.
+
+\subsection{SQL Pitfalls When the Business Layer Orchestrates Reads}
+\label{sec:three_layered_sql_pitfalls}
+
+Approach~B in \texttt{GetMissionBriefingService} loads \texttt{mission}, \texttt{kaiju}, and \texttt{breach} through separate DAO calls. With JDBC that usually means \textbf{multiple round-trips} to the database---the same class of cost people later call N+1 when using ORMs. For hot read screens, prefer Approach~A's single join query in \texttt{JdbcMissionBriefingDao} unless policy truly belongs in the service.
+
+\textbf{Connection and transaction scope:} one \texttt{Connection} per unit of work (see \texttt{JdbcUnitOfWork} above). DAOs must use the connection bound for the current transaction; they must not open silent nested transactions or new connections per call inside the same use case.
+
+\textbf{Keep SQL behind DAOs:} services receive entities or view records from DAO interfaces---not ad-hoc SQL strings. If a course later adopts JPA or Hibernate, lazy-loading and session-boundary mistakes recreate similar read and transaction bugs; this chapter stays with explicit JDBC so those boundaries remain visible.
 
 \subsection{CQRS Perspective for Read Models}
 \label{sec:three_layered_view_assembly_cqrs}
 
-When read requirements become dominant, a CQRS-inspired approach can reduce tension between write-side entities and read-side views. We keep command processing aligned with the write model, and introduce specialized read models or query DTOs for presentation concerns.
-
-This can improve read performance and clarity of intent, but introduces operational and conceptual complexity: additional model maintenance, synchronization flows, and possible eventual consistency between write and read sides. We should treat CQRS as an optional evolution path, not a default starting point.
+When read complexity dominates, a CQRS-inspired split can separate write entities from read models. That improves read performance but adds maintenance and possible eventual consistency. Treat it as optional evolution, not a day-one default.
 
 \subsection{Decision Guidance}
 \label{sec:three_layered_view_assembly_guidance}
 
 As a guideline:
 \begin{itemize}
-    \item choose persistence-level assembly when query efficiency is critical and view shapes are relatively stable,
-    \item choose service-level assembly when use-case orchestration and cross-channel reuse are primary concerns,
-    \item evaluate CQRS when read complexity and read scalability begin to dominate the architecture.
+    \item prefer data-access-level assembly when query efficiency matters and view shapes are relatively stable,
+    \item prefer business-layer assembly when policy and cross-channel reuse matter more,
+    \item evaluate CQRS when read scale and complexity dominate.
 \end{itemize}
 
-\section{Testing Strategy Across Layers and Modules}
+\section{Testing Strategy Across Layers}
 \label{sec:three_layered_testing}
 
-The testing strategy follows the architectural boundaries:
+Testing follows the bottom-up boundaries:
 \begin{itemize}
-    \item test \texttt{application} services with DAO test doubles for fast business-rule feedback,
-    \item test \texttt{persistence} DAOs and \texttt{UnitOfWork} behavior with integration tests,
-    \item keep a focused set of end-to-end tests for full request-to-response flows.
+    \item \textbf{Data access:} integration tests against a real database---verify SQL, entity mapping, and transactions,
+    \item \textbf{Business logic:} tests with fake DAOs that implement the same interfaces as the JDBC implementations,
+    \item \textbf{End-to-end:} a small set of full request-to-response flows through presentation.
 \end{itemize}
 
-\subsection{Application Slice Test Example}
-\label{sec:three_layered_testing_java}
-
-\needspace{20\baselineskip}
-\begin{ridercode}{Java}
-@Test
-void confirmsDetectionWithinUnitOfWork() {
-    FakeBreachDao breachDao = new FakeBreachDao();
-    FakeKaijuDao kaijuDao = new FakeKaijuDao();
-    ImmediateUnitOfWork unitOfWork = new ImmediateUnitOfWork();
-
-    ConfirmKaijuDetectionService service =
-            new ConfirmKaijuDetectionService(breachDao, kaijuDao, unitOfWork);
-
-    ConfirmKaijuDetectionCommand command =
-            new ConfirmKaijuDetectionCommand(
-                    "Leatherback",
-                    KaijuClassification.CATEGORY_III,
-                    new BreachId("B-01"));
-
-    KaijuId id = service.confirmDetection(command);
-    assertTrue(kaijuDao.savedIds().contains(id));
-}
-\end{ridercode}
+For \texttt{Confirm First Kaiju Detection}, a focused business-layer test constructs \texttt{ConfirmKaijuDetectionService} with \texttt{FakeBreachDao}, \texttt{FakeKaijuDao}, and an \texttt{ImmediateUnitOfWork}, then asserts the service saved the expected \texttt{KaijuId}. The fakes implement the same DAO interfaces the production layer provides---they are not contracts invented by the business core in isolation.
 
 \section{When Persistence Becomes Infrastructure}
 \label{sec:three_layered_persistence_to_infrastructure}
@@ -493,89 +706,136 @@ void confirmsDetectionWithinUnitOfWork() {
 \subsection{Case Trigger from Abyssal Watch}
 \label{sec:three_layered_persistence_to_infrastructure_case_trigger}
 
-In \texttt{Confirm First Kaiju Detection}, we do not only persist a new \texttt{Kaiju}; we may also need to publish a mission alert to command systems. This requirement crosses storage boundaries and adds another technical concern to the same outer layer.
+\texttt{Confirm First Kaiju Detection} may need to publish a mission alert, not only insert a row. Messaging and integrations belong in the same \textit{outer} ring as storage, still below business logic.
 
 \subsection{Why Persistence Can Be Too Narrow}
 \label{sec:three_layered_persistence_to_infrastructure_why}
 
-The name \texttt{persistence} works well when the outer layer is mainly database interaction. Over time, however, we often add messaging, third-party APIs, file/object storage, caching, or telemetry delivery. At that point, \texttt{infrastructure} is a better name because it reflects the broader scope of technical capabilities.
-
-This is a scope and naming evolution, not a new dependency model. We still keep business rules in \texttt{application}, and we still isolate technology details at the outside edge.
+The name \texttt{persistence} fits when the outer layer is mostly database work. When messaging, APIs, files, or telemetry stabilize alongside storage, \texttt{infrastructure} is a clearer name. Dependency direction is unchanged: \texttt{presentation -> application -> infrastructure}.
 
 \subsection{Recommended Evolution Path}
 \label{sec:three_layered_persistence_to_infrastructure_path}
 
-We can evolve incrementally:
 \begin{enumerate}
-    \item start with a \texttt{persistence} layer while storage is the dominant external concern,
-    \item rename it to \texttt{infrastructure} when multiple non-storage concerns become stable,
-    \item split by capability, for example \texttt{infrastructure.persistence}, \texttt{infrastructure.messaging}, and \texttt{infrastructure.integrations}.
+    \item start with \texttt{persistence} while the schema-led stack is mostly database access,
+    \item rename to \texttt{infrastructure} when multiple technical capabilities are stable,
+    \item split by capability: \texttt{infrastructure.persistence}, \texttt{infrastructure.messaging}, and so on.
 \end{enumerate}
 
-The dependency direction remains \texttt{presentation -> application -> infrastructure}. Application services should still depend on interfaces or abstractions, not concrete providers.
+The data-centric workflow still begins with storage design; additional adapters extend the outer ring, they do not move schema decisions into presentation.
+
+\subsection{Mission Alert After Detection}
+\label{sec:three_layered_mission_alert}
+
+\texttt{Confirm First Kaiju Detection} may need to notify command workflows, not only insert a row. The \textbf{decision to alert} stays in the business service; \textbf{delivery} belongs in infrastructure (or \texttt{persistence.messaging} until you rename the outer ring).
+
+Define a narrow interface the application depends on, for example \texttt{KaijuDetectionAlertPublisher}, implemented by an adapter in \texttt{infrastructure.messaging}. The mechanism can be in-process notification, email, or a message bus---this chapter does not prescribe queues or async plumbing; the adapter is replaceable.
+
+\needspace{18\baselineskip}
+\begin{ridercode}{Java}
+public interface KaijuDetectionAlertPublisher {
+    void publish(KaijuDetectedAlert alert);
+}
+
+public final class ConfirmKaijuDetectionService {
+    private final BreachDao breachDao;
+    private final KaijuDao kaijuDao;
+    private final UnitOfWork unitOfWork;
+    private final KaijuDetectionAlertPublisher alertPublisher;
+
+    public KaijuId confirmDetection(
+            String codename,
+            KaijuClassification classification,
+            BreachId originBreachId) {
+        return unitOfWork.execute(() -> {
+            breachDao.findById(originBreachId).orElseThrow();
+            KaijuEntity kaiju = new KaijuEntity();
+            // set fields omitted
+            kaijuDao.save(kaiju);
+            alertPublisher.publish(new KaijuDetectedAlert(
+                    new KaijuId(kaiju.getId()), originBreachId));
+            return new KaijuId(kaiju.getId());
+        });
+    }
+}
+\end{ridercode}
+
+Publishing inside the same unit of work as the database insert can still leave \textbf{inconsistent outcomes}: the row may commit while the alert channel fails afterward, or vice versa if ordering is wrong. Production systems often use an \textbf{outbox} table or transactional messaging so the alert is recorded atomically with the write and delivered reliably later. That machinery is out of scope here; the important placement rule remains: the service decides \textit{whether} to alert, infrastructure delivers it.
+
+\tododiagram{ConfirmKaijuDetectionService to persistence DAOs and to infrastructure.messaging alert adapter}
 
 \subsection{Trade-offs and Guardrails}
 \label{sec:three_layered_persistence_to_infrastructure_tradeoffs}
 
-Benefits of the rename include clearer terminology, cleaner growth paths for new technical concerns, and reduced mismatch between architecture names and real responsibilities.
-
-The main risk is turning \texttt{infrastructure} into a dumping ground. We can prevent this by applying simple guardrails:
+Avoid turning \texttt{infrastructure} into a dumping ground:
 \begin{itemize}
-    \item keep business decisions in \texttt{application}, not in infrastructure adapters,
-    \item organize infrastructure by capability, not by framework classes,
-    \item define explicit contracts from \texttt{application} to infrastructure capabilities,
-    \item and avoid direct \texttt{presentation -> infrastructure} calls.
+    \item business decisions stay in \texttt{application},
+    \item organize by capability, not framework package names,
+    \item business layer depends on narrow interfaces per capability,
+    \item no \texttt{presentation -> infrastructure} shortcuts,
+    \item do not put alert orchestration in presentation or DAOs.
 \end{itemize}
 
-\section{When the Database Shapes the Application}
-\label{sec:three_layered_database_shapes_application}
+\section{Schema Change Ripples}
+\label{sec:three_layered_schema_ripples}
 
-\subsection{Why This Happens in Practice}
-\label{sec:three_layered_database_shapes_why}
+\subsection{A Worked Example: Renaming a Column}
+\label{sec:three_layered_schema_ripple_example}
 
-In traditional layered systems, dependency flow can accidentally make the application model mirror storage structures. Even when dependencies point downward, teams often shape service contracts around table boundaries and repository return types. Over time, schema concerns leak upward, and domain objects risk becoming anemic carriers of fields with little behavior.
+Suppose \texttt{origin\_breach\_id} on \texttt{kaiju} is renamed to \texttt{breach\_of\_origin\_id}. In a data-centric stack the ripple is predictable:
+\begin{enumerate}
+    \item migration script updates the table,
+    \item \texttt{KaijuEntity} and \texttt{KaijuDao} SQL or mapping change,
+    \item \texttt{ConfirmKaijuDetectionService} and any setter calls adjust,
+    \item the REST field on confirm-detection requests may change,
+    \item \texttt{MissionKaijuBriefingView} and \texttt{MissionBriefingDao} join projection update if the briefing query exposed the column.
+\end{enumerate}
 
-\subsection{Database-First Workflow and Ripple Effects}
-\label{sec:three_layered_database_shapes_workflow}
-
-A common workflow is \texttt{ERD first -> entities from tables -> logic around CRUD}. This can ship quickly, but it creates a strong coupling path from schema changes into application and presentation models. Renaming a column or reshaping a relation then ripples across DTOs, service methods, and user-facing contracts.
-
-This failure mode is common, but not inevitable. Layered architecture can avoid it when we treat persistence structures as implementation details instead of application truth.
-
-\subsection{Technology Leakage into Business Logic}
-\label{sec:three_layered_database_shapes_leakage}
-
-Leakage appears when use-case services encode SQL-specific assumptions, such as join structure, foreign key workflows, or ORM navigation behavior. For example, in \texttt{Confirm First Kaiju Detection}, application behavior should center on mission rules and \texttt{Kaiju}/\texttt{Breach} invariants, while join-heavy retrieval and mapping stay in persistence or infrastructure adapters.
-
-When this separation is ignored, replacing relational storage with a document or event-oriented model becomes expensive because application code depends on relational details.
-
-\subsection{How We Mitigate This in Layered Architecture}
-\label{sec:three_layered_database_shapes_mitigation}
-
-We can keep a layered design and still prevent database-shaped applications:
-\begin{itemize}
-    \item model use cases and invariants first in \texttt{application},
-    \item keep explicit DTO boundaries between \texttt{presentation} and \texttt{application},
-    \item map between domain-facing objects and storage-facing representations in the outer layer,
-    \item apply dependency inversion so services depend on capability interfaces, not provider APIs,
-    \item and treat persistence or infrastructure as replaceable technical detail.
-\end{itemize}
+That coupling is a trade-off, not a surprise. When a public API must stay stable through such refactors, introduce or extend \texttt{dtos} (Section~\ref{sec:three_layered_dto_module}). Keep join-heavy mapping in data access; keep policy in services---not in triggers (Section~\ref{sec:three_layered_db_constraints}).
 
 \section{Practical Trade-offs and Common Mistakes}
 \label{sec:three_layered_tradeoffs}
 
-3-layered architecture remains a strong default, but quality depends on discipline. Common mistakes include:
+\textbf{Strengths:}\autocite{microsoft2003layered}
 \begin{itemize}
-    \item moving business rules into controllers,
-    \item placing business orchestration inside DAOs,
-    \item leaking persistence entities directly into presentation contracts,
-    \item letting schema changes directly drive application model changes without boundary mapping,
-    \item bypassing application services and calling persistence directly.
+    \item fast delivery for CRUD-heavy, transactional applications,
+    \item predictable table-to-object mapping and onboarding,
+    \item clear placement rules for new code,
+    \item Transaction Script services over provider-shaped DAOs are easy to teach and ship.\autocite{fowler2002patterns}
+\end{itemize}
+
+\textbf{Costs:}
+\begin{itemize}
+    \item schema changes propagate through layers (Section~\ref{sec:three_layered_schema_ripples}),
+    \item swapping storage technology is harder when business code assumes relational shapes,
+    \item rich behavior can accumulate in oversized service classes without sub-package discipline,
+    \item relaxed reads and DAL view projections can hide coupling to schema and screen shapes.
+\end{itemize}
+
+Common mistakes:
+\begin{itemize}
+    \item business rules in controllers or UI components,
+    \item orchestration inside DAOs,
+    \item treating relaxed reads as the default for every query,
+    \item presentation calling data access directly on writes or policy-heavy reads,
+    \item logic in stored procedures that should live in the business layer,
+    \item exposing raw persistence entities in public APIs without a DTO evolution path,
+    \item alert orchestration in presentation or DAOs instead of the business service plus infrastructure adapter,
+    \item closing the shared \texttt{Connection} inside a DAO while a \texttt{UnitOfWork} is still active,
+    \item SQL strings or \texttt{PreparedStatement} usage in services instead of DAOs,
+    \item untyped request bodies (for example a generic \texttt{Map}) at the presentation boundary without shape validation.
 \end{itemize}
 
 \subsection{Layered and Hexagonal: Practical Relationship}
 \label{sec:three_layered_hexagonal_bridge}
 
-Layered and hexagonal architecture are compatible ideas, not opposing camps. A disciplined layered design can still apply dependency inversion and clear boundaries. Hexagonal architecture makes boundary contracts explicit as ports and adapters, while layered architecture keeps a simpler role-based structure around presentation, application, and persistence.
+Data-centric layering and hexagonal architecture address the same problem---separating behavior from technology---with different anchors. Classic three-layer starts from the \textbf{database schema} and builds upward; hexagonal starts from \textbf{use-case behavior} and plugs technology in through ports. Neither is universally ``correct.''
 
-For many teams, layered architecture is the right initial choice. As integration churn, testing pain, or database-shaped modeling pressure increase, teams can evolve selected use cases toward a more explicit ports-and-adapters style.
+When integration churn, testing friction, or the need for core-owned contracts grows, teams can evolve selected areas toward ports and adapters (Chapter~\ref{ch:hexagonal}). That is a refinement path, not an admission that layering was wrong for systems that genuinely center on accurate record capture and storage.
+
+\subsection{Closing Thoughts}
+\label{sec:three_layered_closing}
+
+This chapter taught \textbf{data-centric three-layered architecture} inside a logical monolith: the relational schema is the anchor, and software grows upward in predictable layers. The journey was intentionally bottom-up: design tables and write SQL, implement JDBC DAOs and persistence entities, add Transaction Script services with explicit transaction boundaries, expose thin REST adapters, then extend the shape when complexity appears---shared helpers and assemblers, optional \texttt{dtos}, infrastructure for alerts, read assembly (join in the DAO vs orchestration in the service), and controlled relaxed reads where policy does not apply. Sections on DTO modules, infrastructure renaming, and advanced read strategies are \textbf{evolution} topics, not day-one requirements.
+
+For your course work, hand-written SQL stays in \texttt{persistence}; layers exist so that SQL, HTTP details, and business policy do not collapse into one place. When provider-shaped DAOs, testing friction, or integration churn grow, hexagonal architecture offers a behavior-first refinement (Section~\ref{sec:three_layered_hexagonal_bridge})---not because layering failed, but because the problem outgrew schema-led defaults. For CRUD-heavy, transactional systems that genuinely center on accurate record capture, the classic three layers remain a strong, teachable default.
