@@ -50,7 +50,23 @@
     % --- 3. CODE STYLING (Listings) ---
     \usepackage{listings}
 
+    % Java dialect for ridercode: no morestring=[b]" (breaks on """ text blocks); """…""" as comment.
+    \lstdefinelanguage{JavaBook}{%
+        morekeywords={abstract,boolean,break,byte,case,catch,char,class,%
+            const,continue,default,do,double,else,extends,false,final,%
+            finally,float,for,goto,if,implements,import,instanceof,int,%
+            interface,label,long,native,new,null,package,private,protected,%
+            public,return,short,static,super,switch,synchronized,this,throw,%
+            throws,transient,true,try,void,volatile,while},%
+        sensitive,%
+        morecomment=[l]//,%
+        morecomment=[s]{/*}{*/},%
+        morecomment=[s]{"""}{"""},%
+        morestring=[b]',%
+    }
+
     \lstdefinestyle{rider_style}{
+        language=JavaBook,
         commentstyle=\color{rs_comment},
         stringstyle=\color{rs_string},
         basicstyle=\ttfamily\small\color{rs_text},
@@ -72,6 +88,19 @@
     \usepackage[most]{tcolorbox}
     \tcbuselibrary{listings}
 
+    \makeatletter
+    \newcommand{\ridercode@listinput}[1]{%
+        \begingroup
+        \tcb@listing@set@MakeCaption
+        \catcode`\{=12 \catcode`\}=12 \catcode`\_=12 \catcode`\$=12
+        \lstinputlisting[style=rider_style,language=JavaBook,nolol]{#1}%
+        \endgroup
+    }
+    \def\tcb@listing@uselistinglisting{%
+        \ridercode@listinput{\kvtcb@listingfile}%
+    }%
+    \makeatother
+
     % Caption counter must not be "listing" (clashes with tcolorbox \jobname.listing sidecar).
     \newcounter{codesnippet}
     \numberwithin{codesnippet}{chapter}
@@ -83,14 +112,13 @@
         colframe=rs_border,
         left=22pt,
         listing only,
-        listing file=\jobname-tcb.rider,
-        listing style=rider_style,
+        listing file={\jobname-tcb-\thetcblisting.rider},
         listing engine=listings,
+        listing style=rider_style,
         listing options={
             style=rider_style,
-            language=#2
+            language=JavaBook,
         },
-        #1
     }
 
     \usepackage{caption}
@@ -128,7 +156,7 @@
     \tcbset{
         listing only,
         reset@listingscore/.style={
-            listing file=\jobname-tcb.rider,
+            listing file={\jobname-tcb-\thetcblisting.rider},
             comment=,
             listing only,
             no process,
@@ -142,6 +170,21 @@
             listing engine=listings,
         },
     }
+
+    \makeatletter
+    \def\tcbuselistingtext@input{}%
+    \def\tcbuselistingtext{}%
+    \def\tcb@listing@listingAndOther{\tcbuselistinglisting}%
+    \def\tcb@inputlisting@inside{%
+        \begingroup
+        \def\tcbuselistingtext@input{}%
+        \def\tcb@listing@listingAndOther{\tcbuselistinglisting}%
+        \begin{tcolorbox}[capture=\tcb@listing@capture,savedelimiter=tcolorbox]%
+            \tcb@listing@process
+        \end{tcolorbox}%
+        \endgroup
+    }%
+    \makeatother
 
     \maketitle
 
@@ -157,8 +200,8 @@
 
     %\part{Architectural Styles}
     %\subimport{parts/architectural-styles/2-layered/}{2-layered}
-    %\subimport{parts/architectural-styles/3-layered/}{3-layered}
-    \subimport{parts/architectural-styles/hexagonal/}{hexagonal}
+    \subimport{parts/architectural-styles/3-layered/}{3-layered}
+    %\subimport{parts/architectural-styles/hexagonal/}{hexagonal}
 
     \backmatter
     \printbibliography
