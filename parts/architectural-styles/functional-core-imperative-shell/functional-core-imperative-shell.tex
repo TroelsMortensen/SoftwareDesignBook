@@ -4,15 +4,21 @@
 Functional Core, Imperative Shell (FCIS) is an architectural discipline for separating \textit{what to decide} from \textit{how to reach the outside world}
 \autocite{bernhardt2012boundaries,seemannFcis}.
 
-While I don't get the impression that this pattern is widely used, and I don't have much experience with it, I personally like it for its simplicity and its ability to isolate the pure logic from the outside world, which makes it \textit{very} easy to test. Your logic code can also be broken down into small functions, generally making your code easier to understand and maintain.
+While I am not sure that this pattern is widely used, and I don't have much experience with it, I personally like it for its potential for simplicity and its ability to isolate the pure logic from the outside world, which makes it \textit{very} easy to test. Your logic code can also be broken down into small functions, generally making your code easier to understand and maintain.
 
 The \textbf{functional core} holds business rules, calculations, and data transformations as pure, deterministic code. The \textbf{imperative shell} performs side effects: receiving input from the outside world (presentation layer, web api, cli, gui, etc.),loading data, calling external systems, saving results, and publishing messages. All these activities are interacting with the outside world.
 
+\medskip
+
 Gary Bernhardt popularised the idea in his \textit{Boundaries} talk; since then it has become a practical way to keep complex logic testable in mainstream object-oriented languages.\autocite{googleFcis2025,ssenseFcis,fritzscheFcis}
 
-FCIS is not necessarily a replacement for layered or hexagonal architecture. It can be incorporated into these architectures, or it can be used standalone. It is a cross-cutting refinement you can apply \textit{inside} a service class, a package, or a module. A hexagonal use case can still have ports and adapters; FCIS tells you where the pure calculation lives and where orchestration belongs. Any calculation-heavy service---whether it owns transactions, calls repositories, or publishes events---benefits from the same split between pure rules and imperative wiring.
+FCIS is not necessarily a replacement for layered or hexagonal architecture. It can be incorporated into these architectures, or it can be used standalone. It is a cross-cutting refinement you can apply \textit{inside} a controller, a service class, a package, or a module. Any calculation-heavy code path---whether it lives in a REST endpoint, a JavaFX handler, or an application service---benefits from the same split between pure rules and imperative wiring.
+
 
 I will, however, try to minimize references to hexagonal architecture, and other architectural styles, to keep the focus on the FCIS pattern itself. You may then extract ideas and apply them to other architectures, if you like.
+
+\medskip
+
 
 In this chapter we use the \texttt{Abyssal Watch} case study with two running examples:
 \begin{itemize}
@@ -20,16 +26,20 @@ In this chapter we use the \texttt{Abyssal Watch} case study with two running ex
     \item \textbf{SCN-04 --- Reconcile Mission Telemetry:} merge partially uplinked observations when a Scout Vessel docks (sync and deduplication).
 \end{itemize}
 
-The first example revisits triangulation from Chapter~\ref{ch:hexagonal} through an FCIS lens: we extract pure fusion math from a service you have already seen. The second example introduces a \textbf{new} retrieval-time problem---intermittent uplink during mission closure---that has not appeared in prior chapters.
+The first example revisits triangulation from Chapter~\ref{ch:hexagonal} through an FCIS lens: we extract pure fusion math and apply it \textbf{without} a dedicated service class at first. The second example introduces a \textbf{new} retrieval-time problem---intermittent uplink during mission closure---that has not appeared in prior chapters.
 
 Both examples highlight where functional programming ideas shine: multi-step transformations where you want fast, deterministic unit tests without mocks or databases.
 
-We begin with a brief introduction to functional programming concepts, then define the FCIS pattern, the \textit{imperative sandwich}, and work through both examples end to end.
+\medskip
+
+We teach FCIS in two stages. \textbf{Stage one} is the minimal shape: one impure layer at the delivery boundary (a Web API controller or JavaFX button handler) and one pure functional core. \textbf{Stage two}, towards the end of the chapter, adds an explicit application service when the same use case must be triggered from several entry points, and separates delivery from infrastructure.
+
+We begin with functional programming concepts, the \textit{imperative sandwich}, the two-layer starting point, and both examples in the simple form.
 
 \section{Functional Programming Concepts}
 \label{sec:fcis_fp_concepts}
 
-Before we apply FCIS, we need a shared vocabulary. The terms below appear throughout this chapter and in much of the functional-programming literature.\autocite{seemannFcis}
+Before we apply FCIS, we need a shared vocabulary. The terms below appear throughout this chapter and in much of the functional-programming literature.\autocite{seemannFcis} Given that FCIS is a pattern that is based on functional programming concepts, it is important to understand the concepts first, as these are building blocks of the pattern.
 
 \subsection{Functional Programming}
 \label{sec:fcis_functional_programming}
@@ -41,7 +51,7 @@ Before we apply FCIS, we need a shared vocabulary. The terms below appear throug
     \item immutable data structures,
     \item and avoiding shared mutable state across concurrent work.
 \end{itemize}
-Languages such as Haskell and Clojure are fully functional; Java, C\#, and Python can adopt functional \textit{discipline} in selected areas without becoming functional languages wholesale. FCIS is exactly that: apply functional discipline to the parts of your system that are really about calculation and decision-making.
+Languages such as Haskell and Clojure are fully functional; Java, C\#, and Python can adopt functional \textit{discipline} in selected areas without becoming functional languages wholesale. FCIS is exactly that: apply functional discipline to the parts of your system that are really about calculation and decision-making. That would be the brain of your system, i.e. the business logic.
 
 \subsection{Imperative Programming}
 \label{sec:fcis_imperative_programming}
@@ -127,8 +137,8 @@ Java is not a functional language, but FCIS maps cleanly onto familiar tools:
 \begin{itemize}
     \item \textbf{Core package:} \texttt{static} pure methods or small \texttt{final} classes with no infrastructure imports. No Spring, JDBC, JPA, or HTTP types.
     \item \textbf{Value types:} Java \texttt{record} for inputs and outputs (\texttt{ObservationSnapshot}, \texttt{ReconciledTelemetry}, \texttt{AnnularSector}).
-    \item \textbf{Shell package:} services that inject DAOs, repositories, and messaging adapters; they load data, call the core, then persist or publish results.
-    \item \textbf{Immutability:} \texttt{final} fields on services; defensive copies at the core boundary.
+    \item \textbf{Imperative shell:} initially the controller or event handler; later an application service when entry points multiply. The shell loads data, calls the core, then persists or publishes results.
+    \item \textbf{Immutability:} \texttt{final} fields on shell classes; defensive copies at the core boundary.
     \item \textbf{Optional:} express absence without \texttt{null}; the core returns data, the shell decides whether to throw or map to HTTP errors.
     \item \textbf{Push rule:} when you write an \texttt{if} in the shell, ask whether the condition could be computed by a pure function instead.\autocite{googleFcis2025}
 \end{itemize}
@@ -157,9 +167,10 @@ Pure functions do not share mutable state. If the core only transforms immutable
 
 FCIS complements other styles taught in this book:
 \begin{itemize}
-    \item In \textbf{three-layered architecture} (Chapter~\ref{ch:three_layered}), services such as \texttt{ConfirmKaijuDetectionService} often grow procedural scripts. FCIS splits the script into pure rules and imperative sequencing.
-    \item In \textbf{hexagonal architecture} (Chapter~\ref{ch:hexagonal}), ports and adapters define \textit{where} technology plugs in; FCIS defines \textit{what} inside the use case must stay pure. A thin \texttt{TriangulateKaijuPositionService} can still depend on \texttt{SensorRepository} and \texttt{SensorDriver} ports while delegating geometry to \texttt{KaijuPositionEstimator}.
-    \item FCIS does not require extra port interfaces. A minimal adoption is one extracted pure class and a slimmer service method.
+    \item In \textbf{two-layered architecture} (Chapter~\ref{ch:2_layered}), business logic often lives in controllers. FCIS extracts that logic into a testable core while the controller remains the imperative shell---at least at first.
+    \item In \textbf{three-layered architecture} (Chapter~\ref{ch:three_layered}), thin controllers delegate to services such as \texttt{ConfirmKaijuDetectionService}. That service layer is the \textbf{evolved} FCIS shell we introduce in Section~\ref{sec:fcis_evolution_service}.
+    \item In \textbf{hexagonal architecture} (Chapter~\ref{ch:hexagonal}), delivery and infrastructure adapters define \textit{where} technology plugs in; FCIS defines \textit{what} must stay pure inside the orchestration path.
+    \item FCIS does not require a service class or port interfaces on day one. A minimal adoption is one extracted pure class and a slimmer controller method.
 \end{itemize}
 
 \section{The Imperative Sandwich}
@@ -182,7 +193,7 @@ The imperative layers are the bread; the pure core is the filling. Keep the brea
 \label{fig:fcis_imperative_sandwich}
 \end{figure}
 
-Figure~\ref{fig:fcis_imperative_sandwich} summarises the pattern. Compare that to a \textbf{fat service} where every method interleaves SQL, conditionals, and mapping---the same use case works, but tests must mimic the world to reach the logic.
+Figure~\ref{fig:fcis_imperative_sandwich} summarises the pattern. In the simple two-layer form described next, the ``shell'' is the delivery layer---a controller or event handler. Compare that to a \textbf{fat controller} where calculation is interleaved with SQL and mapping: the same use case works, but tests must mimic the world to reach the logic.
 
 \needspace{10\baselineskip}
 \tododiagram{fat service vs imperative sandwich side by side}
@@ -232,12 +243,32 @@ OrderStatus calculateNextStatus(
 
 Do not pass heavy domain objects with hidden behaviour into the core if you can avoid it. Prefer simple records or maps that the core can treat as dumb data.\autocite{fritzscheFcis} The shell is responsible for mapping from persistence entities and framework types into those records.
 
+\section{Starting Simple: Two Layers}
+\label{sec:fcis_two_layers}
+
+FCIS does not require a service class on day one. When a use case has \textbf{one entry point}---a single REST endpoint, one JavaFX screen, or one CLI command---the \textbf{controller or handler is the imperative shell}. It performs the sandwich: load data, call the pure core, then persist or respond.
+
+\needspace{12\baselineskip}
+\tododiagram{two-layer FCIS: Web API or JavaFX delivery layer → functional core}
+\begin{figure}[htbp]
+\centering
+\diagramplaceholder{delivery (impure) $\rightarrow$ core (pure)}
+\caption{Minimal FCIS: one impure delivery layer and one pure core (diagram to be added).}
+\label{fig:fcis_two_layers}
+\end{figure}
+
+Figure~\ref{fig:fcis_two_layers} shows the starting point for this chapter. The delivery class may inject DAOs, sensor drivers, or file readers directly. That couples infrastructure to the entry point, which is acceptable for a small system with one way to trigger each use case. What matters is that \textbf{calculation} lives in the core, not that every folder name is perfect.
+
+This is an improvement over the fat-controller risk from Chapter~\ref{ch:2_layered}: the controller may still own I/O, but it delegates rules and transformations to honest pure functions. Sensor polling, JDBC, and HTTP response mapping are shell work regardless of whether they sit in a controller or a service.
+
+When the same behaviour must be reachable from a Web API, a CLI job, and a GUI button, we promote the sandwich into a shared \textbf{application service} and thin out the delivery adapters. Section~\ref{sec:fcis_evolution_service} shows that step using SCN-04.
+
 \section{Example: Triangulate Kaiju Position (SCN-03)}
 \label{sec:fcis_example_triangulation}
 
 This example revisits the triangulation use case from Chapter~\ref{ch:hexagonal}---our \textbf{known} example. We suspect a Kaiju has left a Breach; multiple sensors in the area return uncertain readings. Each reading is an \textit{annular sector}---a direction and distance range, not a single point. We fuse several sectors to narrow the likely position to a small \texttt{EstimatedArea} polygon.
 
-In the hexagonal chapter, ports and adapters framed the problem; fusion math remained a private stub inside \texttt{TriangulateKaijuPositionService}. FCIS reframes that stub as the functional core and leaves the service as a thin imperative shell.
+In the hexagonal chapter, ports and adapters framed the problem; fusion math remained a private stub inside \texttt{TriangulateKaijuPositionService}. Here we start \textbf{one level simpler}: extract that stub into \texttt{KaijuPositionEstimator} and let a \texttt{TriangulationController} act as the imperative shell. Section~\ref{sec:fcis_evolution_service} explains when to promote the same pattern into a dedicated service.
 
 \subsection{Use Case Summary}
 \label{sec:fcis_triangulation_use_case}
@@ -270,7 +301,7 @@ Figure~\ref{fig:fcis_annular_triangulation} illustrates the idea: each sensor co
 
 Recall Code snippet~\ref{lst:triangulate-service-compute-area} from Chapter~\ref{ch:hexagonal}: \texttt{computeEstimatedArea} is pure logic trapped inside an impure service class. It is hard to unit test without constructing the whole service and mocking three ports, even though the geometry only needs a \texttt{List<AnnularSector>}.
 
-The FCIS refactor extracts that helper into a dedicated \textbf{functional core} class and leaves the service as a \textbf{thin imperative shell}.
+The FCIS refactor extracts that helper into a dedicated \textbf{functional core} class and leaves a \textbf{thin imperative shell} at the delivery boundary.
 
 \subsection{Functional Core: KaijuPositionEstimator}
 \label{sec:fcis_triangulation_core}
@@ -330,20 +361,21 @@ public final class KaijuPositionEstimator
 
 The implementation is deliberately a stub---the book is about architecture, not computational geometry---but the \textit{boundary} is real: no database, no sensor driver, no logging. Production code would replace the body of \texttt{estimateArea} with a proper intersection algorithm while keeping the signature unchanged.
 
-\subsection{Imperative Shell: TriangulateKaijuPositionService}
+\subsection{Imperative Shell: TriangulationController}
 \label{sec:fcis_triangulation_shell}
 
-The shell class lives under \texttt{com.abyssalwatch.shell.triangulation}. It depends on outbound ports (or DAOs) for I/O and calls the core for fusion.
+For a single Web API entry point, the controller is the imperative shell. It lives under \texttt{com.abyssalwatch.presentation.web} and injects infrastructure collaborators directly---a deliberate simplification for stage one. A JavaFX button handler could follow the same sandwich shape.
 
-\needspace{24\baselineskip}
+\needspace{28\baselineskip}
 \begin{ridercode}{Java}
-public final class TriangulateKaijuPositionService
-    implements TriangulateKaijuPositionPort
+@RestController
+@RequestMapping("/triangulation")
+public final class TriangulationController
 {
     private final SensorRepository sensorRepository;
     private final SensorDriverFactory sensorDriverFactory;
 
-    public TriangulateKaijuPositionService(
+    public TriangulationController(
         SensorRepository sensorRepository,
         SensorDriverFactory sensorDriverFactory
     )
@@ -352,20 +384,19 @@ public final class TriangulateKaijuPositionService
         this.sensorDriverFactory = sensorDriverFactory;
     }
 
-    @Override
+    @PostMapping
     public EstimatedArea triangulate(
-        Location location,
-        double radius
+        @RequestBody TriangulationRequest request
     )
     {
         List<Sensor> sensors =
             sensorRepository.findAllByCircle(
-                location,
-                radius
+                request.location(),
+                request.radius()
             );
 
         List<AnnularSector> sectors =
-            pollSensors(sensors, location);
+            pollSensors(sensors, request.location());
 
         List<Location> polygon =
             KaijuPositionEstimator.estimateArea(sectors);
@@ -392,10 +423,10 @@ public final class TriangulateKaijuPositionService
     }
 }
 \end{ridercode}
-\captionof{codesnippet}{Thin shell: read sensors, call core, return result}
+\captionof{codesnippet}{\texttt{TriangulationController} as imperative shell}
 \label{lst:fcis-triangulate-shell}
 
-Read the method top to bottom as an imperative sandwich: \texttt{findAllByCircle} and \texttt{pollSensors} are reads; \texttt{KaijuPositionEstimator.estimateArea} is the pure compute step; returning \texttt{EstimatedArea} is the write to the caller (persistence of the estimate, if needed, would be another shell concern in a follow-up use case).
+Read the endpoint top to bottom as an imperative sandwich: \texttt{findAllByCircle} and \texttt{pollSensors} are reads; \texttt{KaijuPositionEstimator.estimateArea} is the pure compute step; returning \texttt{EstimatedArea} is the response to the caller (persisting the estimate, if needed, would be another shell concern).
 
 \subsection{Testing the Core}
 \label{sec:fcis_triangulation_test}
@@ -446,7 +477,7 @@ class KaijuPositionEstimatorTest
 \captionof{codesnippet}{Unit test for \texttt{KaijuPositionEstimator} without mocks}
 \label{lst:fcis-triangulation-test}
 
-If fusion rules change---new weighting for thermal sensors, for example---you edit \texttt{KaijuPositionEstimator} and its tests. Sensor driver protocols can change independently in the shell.
+If fusion rules change---new weighting for thermal sensors, for example---you edit \texttt{KaijuPositionEstimator} and its tests. Sensor driver protocols can change independently in the controller. When a CLI batch job also needs coordinate lock, extract the sandwich into a service as in Section~\ref{sec:fcis_evolution_service}.
 
 \section{Example: Reconcile Mission Telemetry (SCN-04)}
 \label{sec:fcis_example_reconciliation}
@@ -605,36 +636,38 @@ public final class TelemetryReconciler
 
 The deduplication rule keeps the stronger signal when two readings share a sensor type within the configured window. Production code might key on \texttt{ObservationId} or sensor serial numbers; here the focus is the architectural boundary: no DAO, no file reader, no mission-state update inside the core.
 
-\subsection{Imperative Shell: ReconcileMissionTelemetryService}
+\subsection{Imperative Shell: MissionTelemetryController}
 \label{sec:fcis_reconciliation_shell}
 
-The shell loads both batches, maps to snapshots, calls the reconciler, and persists the merged result.
+With one REST endpoint for dock-side reconciliation, the controller is again the imperative shell. It loads both batches, maps to snapshots, calls the reconciler, and persists the merged result.
 
-\needspace{26\baselineskip}
+\needspace{30\baselineskip}
 \begin{ridercode}{Java}
-public final class ReconcileMissionTelemetryService
+@RestController
+@RequestMapping("/missions")
+public final class MissionTelemetryController
 {
     private final ObservationDao observationDao;
     private final DockUploadReader dockUploadReader;
     private final UnitOfWork unitOfWork;
 
+    @PostMapping("/{missionId}/reconcile")
     public ReconciledTelemetry reconcile(
-        MissionId missionId,
-        VesselId vesselId,
-        ReconciliationPolicy policy
+        @PathVariable MissionId missionId,
+        @RequestBody ReconcileTelemetryRequest request
     )
     {
         List<ObservationSnapshot> synced =
             loadSynced(missionId);
 
         List<ObservationSnapshot> dockBatch =
-            dockUploadReader.read(vesselId);
+            dockUploadReader.read(request.vesselId());
 
         ReconciledTelemetry merged =
             TelemetryReconciler.merge(
                 synced,
                 dockBatch,
-                policy
+                request.policy()
             );
 
         persistMerged(missionId, merged);
@@ -681,10 +714,10 @@ public final class ReconcileMissionTelemetryService
     }
 }
 \end{ridercode}
-\captionof{codesnippet}{\texttt{ReconcileMissionTelemetryService} imperative shell}
+\captionof{codesnippet}{\texttt{MissionTelemetryController} as imperative shell}
 \label{lst:fcis-reconciliation-shell}
 
-Whether the mission may transition toward \texttt{Completed} is a separate shell concern: it would read \texttt{ReconciledTelemetry.completenessRatio()} and vessel recovery state, then apply INV-05. The merge rules themselves stay in \texttt{TelemetryReconciler}.
+Whether the mission may transition toward \texttt{Completed} is a separate shell concern for now: the controller could read \texttt{ReconciledTelemetry.completenessRatio()} and vessel recovery state, then apply INV-05. Section~\ref{sec:fcis_evolution_service} moves this orchestration into a shared service when more entry points appear.
 
 \subsection{Testing the Core with Table-Driven Cases}
 \label{sec:fcis_reconciliation_test}
@@ -780,19 +813,131 @@ class TelemetryReconcilerTest
 
 Changing the deduplication window or the keep-stronger rule is a one-file change with tests that run in milliseconds.\todoinref{property-based testing chapter for fuzzing merged ObservationSnapshot lists}
 
+\section{When Entry Points Multiply: Adding a Service Layer}
+\label{sec:fcis_evolution_service}
+
+The two-layer shape is a good start, but it does not scale when the \textbf{same use case} must be triggered from several places. Suppose SCN-04 reconciliation must run from:
+\begin{itemize}
+    \item the REST endpoint in Code snippet~\ref{lst:fcis-reconciliation-shell},
+    \item a CLI import when a dock upload file lands on the Command Carrier,
+    \item and a nightly batch job that catches missions stuck in \texttt{Retrieval}.
+\end{itemize}
+Copying the full imperative sandwich into three classes duplicates I/O sequencing and drifts out of sync. The fix is to extract a shared \textbf{application service} and leave delivery classes thin.
+
+\subsection{The Problem: Duplicated Sandwiches}
+\label{sec:fcis_evolution_problem}
+
+Each new entry point would repeat: load synced observations, read the dock batch, call \texttt{TelemetryReconciler.merge}, persist. The functional core does not change---only the duplication in impure orchestration grows. This is the same pressure that led to application services in Chapter~\ref{ch:three_layered}, where \texttt{KaijuController} delegates to \texttt{ConfirmKaijuDetectionService}.
+
+\subsection{Extract the Application Service}
+\label{sec:fcis_evolution_extract}
+
+Move the sandwich from \texttt{MissionTelemetryController} into \texttt{ReconcileMissionTelemetryService}. The service owns read--compute--write; \texttt{TelemetryReconciler} is unchanged.
+
+\needspace{26\baselineskip}
+\begin{ridercode}{Java}
+public final class ReconcileMissionTelemetryService
+{
+    private final ObservationDao observationDao;
+    private final DockUploadReader dockUploadReader;
+    private final UnitOfWork unitOfWork;
+
+    public ReconciledTelemetry reconcile(
+        MissionId missionId,
+        VesselId vesselId,
+        ReconciliationPolicy policy
+    )
+    {
+        List<ObservationSnapshot> synced =
+            loadSynced(missionId);
+
+        List<ObservationSnapshot> dockBatch =
+            dockUploadReader.read(vesselId);
+
+        ReconciledTelemetry merged =
+            TelemetryReconciler.merge(
+                synced,
+                dockBatch,
+                policy
+            );
+
+        persistMerged(missionId, merged);
+
+        return merged;
+    }
+
+    // loadSynced, toSnapshot, persistMerged unchanged
+    // from Code snippet~\ref{lst:fcis-reconciliation-shell}
+}
+\end{ridercode}
+\captionof{codesnippet}{\texttt{ReconcileMissionTelemetryService} shared orchestration shell}
+\label{lst:fcis-reconciliation-service}
+
+The private helpers from Code snippet~\ref{lst:fcis-reconciliation-shell} move here unchanged. The functional core did not need a single edit.
+
+\subsection{Split Delivery from Infrastructure}
+\label{sec:fcis_evolution_split}
+
+With a service in place, impure code falls into two roles:
+\begin{itemize}
+    \item \textbf{Delivery adapters} translate an entry point into a service call. They map HTTP bodies, CLI arguments, or JavaFX form values, and map service results back to responses. They should not query the database directly.
+    \item \textbf{Infrastructure} provides outbound capabilities the service needs: \texttt{ObservationDao}, \texttt{DockUploadReader}, message brokers, sensor drivers. The service depends on infrastructure; delivery depends on the service.
+\end{itemize}
+
+These roles mirror ideas from layered and hexagonal chapters, but the names here are deliberately plain. FCIS still cares only about \textbf{where purity lives}: inside \texttt{TelemetryReconciler}, not in delivery or infrastructure.
+
+\needspace{12\baselineskip}
+\tododiagram{delivery → application service → core; service → infrastructure}
+\begin{figure}[htbp]
+\centering
+\diagramplaceholder{delivery $\rightarrow$ service $\rightarrow$ core; service $\rightarrow$ infrastructure}
+\caption{Evolved FCIS: thin delivery, service as orchestration shell, infrastructure for I/O (diagram to be added).}
+\label{fig:fcis_evolution_layers}
+\end{figure}
+
+The REST controller becomes thin:
+
+\needspace{14\baselineskip}
+\begin{ridercode}{Java}
+@RestController
+@RequestMapping("/missions")
+public final class MissionTelemetryController
+{
+    private final ReconcileMissionTelemetryService service;
+
+    @PostMapping("/{missionId}/reconcile")
+    public ReconciledTelemetry reconcile(
+        @PathVariable MissionId missionId,
+        @RequestBody ReconcileTelemetryRequest request
+    )
+    {
+        return service.reconcile(
+            missionId,
+            request.vesselId(),
+            request.policy()
+        );
+    }
+}
+\end{ridercode}
+\captionof{codesnippet}{Thin delivery adapter after service extraction}
+\label{lst:fcis-reconciliation-controller-thin}
+
+A CLI handler follows the same pattern: parse arguments, call \texttt{service.reconcile(...)}, print or log the result. Triangulation (SCN-03) promotes the same way when a batch job or second API also needs coordinate lock.
+
+\subsection{What Stayed Pure}
+\label{sec:fcis_evolution_pure_unchanged}
+
+\texttt{TelemetryReconciler} and its unit tests are identical before and after the refactor. That stability is the payoff: delivery and infrastructure arrangements can evolve while the rules under test stay fixed. Promote to a service when entry points multiply; do not promote earlier just because other chapters use service classes.
+
 \section{Recommended Package Layout}
 \label{sec:fcis_package_layout}
 
-FCIS benefits from explicit package boundaries. The rule is simple: \texttt{core} must not depend on \texttt{shell}, \texttt{persistence}, or \texttt{presentation}. The shell depends on the core and on infrastructure.
+FCIS benefits from explicit package boundaries. The invariant is always: \texttt{core} must not depend on delivery, infrastructure, or persistence types.
 
-\needspace{12\baselineskip}
-\tododiagram{FCIS package boundary: core has no outward infra imports; shell depends on core}
-\begin{figure}[htbp]
-\centering
-\diagramplaceholder{core (pure) $\leftarrow$ shell (I/O) $\leftarrow$ presentation}
-\caption{FCIS package dependency direction (diagram to be added).}
-\label{fig:fcis_package_boundary}
-\end{figure}
+\subsection{Simple Layout: Core and Delivery}
+\label{sec:fcis_package_layout_simple}
+
+Stage one maps cleanly to three roots: \texttt{core}, \texttt{presentation}, and \texttt{persistence}. Controllers in \texttt{presentation} call the core and infrastructure directly.
 
 \needspace{16\baselineskip}
 \begin{figure}[htbp]
@@ -808,25 +953,55 @@ FCIS benefits from explicit package boundaries. The rule is simple: \texttt{core
 .4 \fileicon\ TelemetryReconciler.java.
 .4 \fileicon\ ReconciledTelemetry.java.
 .4 \fileicon\ ObservationSnapshot.java.
-.2 \foldericon\ shell/.
-.3 \foldericon\ triangulation/.
-.4 \fileicon\ TriangulateKaijuPositionService.java.
-.3 \foldericon\ telemetry/.
-.4 \fileicon\ ReconcileMissionTelemetryService.java.
-.3 \foldericon\ persistence/.
-.4 \fileicon\ JdbcObservationDao.java.
 .2 \foldericon\ presentation/.
 .3 \foldericon\ web/.
+.4 \fileicon\ TriangulationController.java.
 .4 \fileicon\ MissionTelemetryController.java.
+.2 \foldericon\ persistence/.
+.3 \fileicon\ JdbcObservationDao.java.
+.3 \fileicon\ JdbcSensorDao.java.
 }
 \end{minipage}
-\caption{FCIS-oriented package layout for triangulation and telemetry examples.}
-\label{fig:fcis_package_layout}
+\caption{Simple FCIS layout: core plus delivery controllers with direct infrastructure access.}
+\label{fig:fcis_package_layout_simple}
 \end{figure}
 
-Figure~\ref{fig:fcis_package_layout} groups code by FCIS role rather than only by technical layer. You can combine this with layered or hexagonal folders: for example, \texttt{shell.triangulation} may still contain \texttt{adapter} sub-packages behind ports from Chapter~\ref{ch:hexagonal}. The invariant is that \texttt{core} never imports them.
+In this layout, map \texttt{ObservationEntity} to \texttt{ObservationSnapshot} in the controller before calling \texttt{TelemetryReconciler}. \texttt{Sensor} records and driver polling stay in the controller for SCN-03.
 
-\textbf{Mapping entities at the boundary:} persistence entities such as \texttt{ObservationEntity} stay in the shell. Map to \texttt{ObservationSnapshot} before calling \texttt{TelemetryReconciler}. Similarly, \texttt{Sensor} domain records from the hexagonal example are shell-side; \texttt{AnnularSector} is the core input after polling.
+\subsection{Evolved Layout: Delivery, Service, and Infrastructure}
+\label{sec:fcis_package_layout_evolved}
+
+After Section~\ref{sec:fcis_evolution_service}, add \texttt{application} for orchestration services and move persistence and file readers under \texttt{infrastructure}. Delivery adapters stay thin.
+
+\needspace{16\baselineskip}
+\begin{figure}[htbp]
+\centering
+\begin{minipage}{0.85\textwidth}
+\dirtree{%
+.1 \foldericon\ com.abyssalwatch/.
+.2 \foldericon\ core/.
+.3 \foldericon\ telemetry/.
+.4 \fileicon\ TelemetryReconciler.java.
+.2 \foldericon\ application/.
+.3 \foldericon\ telemetry/.
+.4 \fileicon\ ReconcileMissionTelemetryService.java.
+.2 \foldericon\ delivery/.
+.3 \foldericon\ web/.
+.4 \fileicon\ MissionTelemetryController.java.
+.3 \foldericon\ cli/.
+.4 \fileicon\ ReconcileTelemetryCommand.java.
+.2 \foldericon\ infrastructure/.
+.3 \foldericon\ persistence/.
+.4 \fileicon\ JdbcObservationDao.java.
+.3 \foldericon\ files/.
+.4 \fileicon\ DockUploadReader.java.
+}
+\end{minipage}
+\caption{Evolved FCIS layout: delivery, application service, and infrastructure.}
+\label{fig:fcis_package_layout_evolved}
+\end{figure}
+
+Here the entity-to-snapshot mapping moves to the application service boundary. Delivery only maps HTTP or CLI types to service parameters.
 
 \section{Testing the Functional Core}
 \label{sec:fcis_testing}
@@ -836,14 +1011,15 @@ Figure~\ref{fig:fcis_package_layout} groups code by FCIS role rather than only b
 
 \begin{itemize}
     \item \textbf{Functional core:} unit tests with fixed inputs; no Spring context, no test containers, no mocked repositories. Aim for branch coverage on rules and calculations.
-    \item \textbf{Imperative shell:} integration tests that verify wiring---SQL mappings, transaction rollback, HTTP status codes. These tests are slower and fewer in number.
+    \item \textbf{Simple imperative shell:} integration tests through the controller verify wiring---SQL mappings, transaction rollback, HTTP status codes.
+    \item \textbf{Evolved imperative shell:} test the application service with fake infrastructure collaborators; keep delivery adapter tests minimal.
     \item \textbf{End-to-end:} optional smoke tests through the UI or API; not the primary place to prove reconciliation logic.
 \end{itemize}
 
 \subsection{Contrast with Port-Based Testing}
 \label{sec:fcis_testing_vs_ports}
 
-Hexagonal architecture (Chapter~\ref{ch:hexagonal}) tests use cases by substituting fake outbound ports. That remains valuable for shell orchestration. FCIS reduces how much logic those fakes must exercise: if \texttt{KaijuPositionEstimator} is already proven, a triangulation integration test only needs to assert that the service calls the estimator and maps the result---not that intersection math is correct.
+Hexagonal architecture (Chapter~\ref{ch:hexagonal}) tests use cases by substituting fake outbound ports. That remains valuable for service-level orchestration after Section~\ref{sec:fcis_evolution_service}. FCIS reduces how much logic those fakes must exercise: if \texttt{KaijuPositionEstimator} is already proven, a controller or service integration test only needs to assert that the shell calls the estimator and maps the result---not that intersection math is correct.
 
 \subsection{Guidelines}
 \label{sec:fcis_testing_guidelines}
@@ -879,7 +1055,8 @@ When the investment fits the problem, FCIS delivers:
 Those benefits come with costs teams should expect:
 \begin{itemize}
     \item \textbf{Extra types and mapping:} snapshots and DTOs at the core boundary add classes and conversion code,
-    \item \textbf{Split methods:} one procedural service becomes a shell class plus one or more core classes,
+    \item \textbf{Split methods:} one procedural controller or service becomes a shell class plus one or more core classes,
+    \item \textbf{Timing the service promotion:} extracting a service too early adds folders before you need them; delaying too long duplicates sandwiches across delivery adapters,
     \item \textbf{Discipline required:} without import rules, \texttt{core} packages accumulate static database access and ``temporary'' logging,
     \item \textbf{Not every line benefits:} pass-through CRUD with no rules gains little from FCIS,
     \item and \textbf{Learning curve:} developers must recognise what belongs in the core versus the shell.
@@ -921,17 +1098,19 @@ The first group of mistakes weakens purity in the core:
     \item and calling \texttt{Instant.now()} inside the core rather than accepting time as an argument.
 \end{itemize}
 
-The next group leaves too much logic in the shell:
+The next group leaves too much logic in the shell or duplicates it:
 \begin{itemize}
-    \item long \texttt{if/else} chains in services that should be pure functions,
-    \item scoring duplicated across REST controllers and batch importers instead of shared core code,
+    \item long \texttt{if/else} chains in controllers or services that should be pure functions,
+    \item copying the full imperative sandwich into every delivery adapter instead of extracting an application service,
+    \item reconciliation logic duplicated across REST controllers and batch importers instead of shared core code,
     \item returning different DTO shapes from the core (the core should return domain-neutral values; the shell maps to API contracts),
     \item and ``anemic shell'' services that only delegate while the core performs I/O through static helpers---a fake split.
 \end{itemize}
 
 Finally, some mistakes come from structure without discipline:
 \begin{itemize}
-    \item creating \texttt{core} and \texttt{shell} packages but allowing cross-imports in both directions,
+    \item promoting to an application service before a second entry point exists,
+    \item creating \texttt{core} and delivery packages but allowing cross-imports in both directions,
     \item passing live domain entities with behaviour into the core when a snapshot record would suffice,
     \item testing only through HTTP while complex math remains untested at the unit level,
     \item and applying FCIS to every class uniformly instead of focusing on calculation-heavy areas.
@@ -943,6 +1122,6 @@ Most mistakes boil down to the same rule: the core must be honest and pure; the 
 \subsection{Closing Thoughts}
 \label{sec:fcis_closing}
 
-We opened with functional programming vocabulary---pure and impure functions, honest signatures, immutable values, and side effects---then applied those ideas through the imperative sandwich. The triangulation example (Section~\ref{sec:fcis_example_triangulation}) moved geometric fusion into \texttt{KaijuPositionEstimator}; the telemetry example (Section~\ref{sec:fcis_example_reconciliation}) moved merge and deduplication into \texttt{TelemetryReconciler}. In both cases the shell reads and writes; the core computes.
+We opened with functional programming vocabulary---pure and impure functions, honest signatures, immutable values, and side effects---then applied those ideas through the imperative sandwich. We started with the \textbf{two-layer} shape: controllers as imperative shells around \texttt{KaijuPositionEstimator} and \texttt{TelemetryReconciler}. Section~\ref{sec:fcis_evolution_service} showed when to add an application service and split delivery from infrastructure---without changing the functional core.
 
-FCIS works in Java without adopting a new framework. Records, static pure methods, explicit packages, and disciplined imports are enough to start. Combine FCIS with the architectural styles elsewhere in this book: layers and hexagons tell you how to organise modules and ports; FCIS tells you how to keep the behaviour inside them testable and honest.
+FCIS works in Java without adopting a new framework. Records, static pure methods, and disciplined imports are enough to start at the controller boundary. Add services and infrastructure folders when entry points multiply, not before. Combine FCIS with the architectural styles elsewhere in this book: layers and hexagons tell you how to organise modules; FCIS tells you how to keep the behaviour inside them testable and honest.
