@@ -1,0 +1,1 @@
+https://www.milanjovanovic.tech/blog/vertical-slice-architecture-where-does-the-shared-logic-live?utm_source=YouTube&utm_medium=social&utm_campaign=25.05.2026

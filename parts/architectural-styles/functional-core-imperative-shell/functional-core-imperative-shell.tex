@@ -1,0 +1,858 @@
+\chapter{Functional Core, Imperative Shell}
+\label{ch:fcis}
+
+Functional Core, Imperative Shell (FCIS) is an architectural discipline for separating \textit{what to decide} from \textit{how to reach the outside world}.\autocite{bernhardt2012boundaries,seemannFcis} The \textbf{functional core} holds business rules, calculations, and data transformations as pure, deterministic code. The \textbf{imperative shell} performs side effects: loading data, calling external systems, saving results, and publishing messages. Gary Bernhardt popularised the idea in his \textit{Boundaries} talk; since then it has become a practical way to keep complex logic testable in mainstream object-oriented languages.\autocite{googleFcis2025,ssenseFcis,fritzscheFcis}
+
+FCIS is not a replacement for layered or hexagonal architecture. It is a cross-cutting refinement you can apply \textit{inside} a service class, a package, or a module. A hexagonal use case can still have ports and adapters; FCIS tells you where the pure calculation lives and where orchestration belongs. A three-layered \texttt{ConfirmKaijuDetectionService} can still own transactions; FCIS tells you which lines are scoring rules and which lines touch the database.
+
+In this chapter we use the \texttt{Abyssal Watch} case study with two running examples:
+\begin{itemize}
+    \item \textbf{SCN-03 --- Triangulate Kaiju Position:} fuse multiple sensor readings into an estimated area (geometry and data fusion),
+    \item \textbf{SCN-02 --- Assess Detection Confidence:} score recent telemetry before confirming a Kaiju (rules and weighted calculation).
+\end{itemize}
+Both examples highlight where functional programming ideas shine: multi-step transformations where you want fast, deterministic unit tests without mocks or databases.
+
+We begin with a brief introduction to functional programming concepts, then define the FCIS pattern, the \textit{imperative sandwich}, and work through both examples end to end.
+
+\section{Functional Programming Concepts}
+\label{sec:fcis_fp_concepts}
+
+Before we apply FCIS, we need a shared vocabulary. The terms below appear throughout this chapter and in much of the functional-programming literature.\autocite{seemannFcis}
+
+\subsection{Functional Programming}
+\label{sec:fcis_functional_programming}
+
+\textbf{Functional programming} treats computation primarily as the evaluation of functions over values. Programs are built by composing functions that take inputs and return outputs, rather than by issuing sequences of commands that mutate shared state. In practice, functional style emphasises:
+\begin{itemize}
+    \item functions as first-class values (they can be passed, returned, and stored),
+    \item expressions over statements where possible,
+    \item immutable data structures,
+    \item and avoiding shared mutable state across concurrent work.
+\end{itemize}
+Languages such as Haskell and Clojure are fully functional; Java, C\#, and Python can adopt functional \textit{discipline} in selected areas without becoming functional languages wholesale. FCIS is exactly that: apply functional discipline to the parts of your system that are really about calculation and decision-making.
+
+\subsection{Imperative Programming}
+\label{sec:fcis_imperative_programming}
+
+\textbf{Imperative programming} expresses computation as a sequence of commands that change program state. ``Do this, then that, then update this variable'' is the natural shape. Most business applications are imperative at the edges: read a row from the database, send an HTTP response, write a log line. That is not a flaw---the outside world is stateful and effectful. FCIS does not try to eliminate imperative code; it \textit{contains} it in a thin shell so the core stays easy to reason about.
+
+\subsection{Honest Functions}
+\label{sec:fcis_honest_functions}
+
+An \textbf{honest function} is one whose signature tells the truth about what it needs and what it does.\autocite{seemannFcis} If a method is named \texttt{calculateScore(observations)} but secretly reads from a database, consults a global configuration object, or logs to the console, it is \textit{dishonest}: callers cannot understand or test it from the parameters alone. Dishonest functions hide dependencies, which forces integration tests, mocks, and surprises in production.
+
+Honest functions take everything they need as explicit arguments and return explicit results. That honesty is what makes the functional core testable: the test passes data in and asserts on data out, with no hidden collaborators.
+
+\subsection{Pure and Impure Functions}
+\label{sec:fcis_pure_impure}
+
+A \textbf{pure function} is deterministic and free of side effects: given the same inputs, it always produces the same outputs, and it does not observe or change anything outside its local scope. An \textbf{impure function} does anything else---reads the clock, queries a database, mutates a field on a shared object, or writes a file.
+
+Pure functions are the building blocks of the functional core. Impure functions belong in the imperative shell. The boundary is pragmatic: a method that only transforms in-memory data structures is pure; a method that opens a JDBC connection is not.
+
+Code snippet~\ref{lst:fcis-impure-confirm} shows an impure method that mixes scoring with persistence. Code snippet~\ref{lst:fcis-pure-confirm} extracts the decision into a pure function; the shell (not shown here) would load observations and save the Kaiju.
+
+\needspace{18\baselineskip}
+\begin{ridercode}{Java}
+// Impure: loads data and saves inside the "calculation"
+public KaijuId confirmIfConfident(BreachId breachId, String codename)
+{
+  List<ObservationEntity> rows =
+      observationDao.findRecentByBreach(breachId);
+
+  double score = 0.0;
+  for (ObservationEntity row : rows)
+  {
+    score += row.getSignalStrength();
+  }
+
+  if (score < CONFIDENCE_THRESHOLD)
+  {
+    throw new InsufficientConfidenceException();
+  }
+
+  KaijuEntity kaiju = new KaijuEntity();
+  kaiju.setCodename(codename);
+  kaijuDao.save(kaiju);
+  return new KaijuId(kaiju.getId());
+}
+\end{ridercode}
+\captionof{codesnippet}{Impure confirmation: scoring mixed with database access}
+\label{lst:fcis-impure-confirm}
+
+\needspace{12\baselineskip}
+\begin{ridercode}{Java}
+// Pure: same inputs always yield the same assessment
+public static DetectionAssessment assess(
+    List<ObservationSnapshot> observations,
+    double threshold
+)
+{
+  double score = observations.stream()
+      .mapToDouble(ObservationSnapshot::signalStrength)
+      .sum();
+
+  boolean meetsThreshold = score >= threshold;
+  return new DetectionAssessment(score, meetsThreshold);
+}
+\end{ridercode}
+\captionof{codesnippet}{Pure assessment: explicit inputs, explicit result}
+\label{lst:fcis-pure-confirm}
+
+\subsection{Immutable and Mutable Data}
+\label{sec:fcis_immutable_mutable}
+
+\textbf{Mutable data} can be changed after creation; \textbf{immutable data} cannot. When several threads or several layers share mutable objects, reasoning about who changed what becomes expensive. Pure functions work best with immutable inputs: they return new values instead of altering arguments in place.
+
+In Java, \texttt{record} types are a practical default for values crossing the core boundary. Prefer \texttt{List.copyOf} or unmodifiable lists when exposing collections from the core, and treat any object passed \textit{into} the core as read-only unless you have a compelling reason otherwise. The shell may still use mutable JDBC entities internally; map them to immutable snapshots before calling the core.
+
+\subsection{Side Effects}
+\label{sec:fcis_side_effects}
+
+A \textbf{side effect} is any interaction with the outside world or any observable change beyond returning a value. Common side effects include:
+\begin{itemize}
+    \item database reads and writes,
+    \item network and message-broker calls,
+    \item file system access,
+    \item logging and metrics,
+    \item mutation of shared or global state,
+    \item reading non-deterministic sources such as the system clock or a random number generator.
+\end{itemize}
+Side effects are necessary in real systems. FCIS confines them to the imperative shell so the functional core stays a pipeline of honest, pure transformations.
+
+\subsection{Applying These Ideas in Java}
+\label{sec:fcis_java_guidance}
+
+Java is not a functional language, but FCIS maps cleanly onto familiar tools:
+\begin{itemize}
+    \item \textbf{Core package:} \texttt{static} pure methods or small \texttt{final} classes with no infrastructure imports. No Spring, JDBC, JPA, or HTTP types.
+    \item \textbf{Value types:} Java \texttt{record} for inputs and outputs (\texttt{ObservationSnapshot}, \texttt{DetectionAssessment}, \texttt{AnnularSector}).
+    \item \textbf{Shell package:} services that inject DAOs, repositories, and messaging adapters; they load data, call the core, then persist or publish results.
+    \item \textbf{Immutability:} \texttt{final} fields on services; defensive copies at the core boundary.
+    \item \textbf{Optional:} express absence without \texttt{null}; the core returns data, the shell decides whether to throw or map to HTTP errors.
+    \item \textbf{Push rule:} when you write an \texttt{if} in the shell, ask whether the condition could be computed by a pure function instead.\autocite{googleFcis2025}
+\end{itemize}
+The rest of this chapter applies these rules to two Abyssal Watch use cases.
+
+\section{Why We Use Functional Core, Imperative Shell}
+\label{sec:fcis_why}
+
+\subsection{Testability Without Mocks}
+\label{sec:fcis_why_testability}
+
+The main payoff is \textbf{fast, focused unit tests}. When business rules live in pure functions, tests pass plain data structures in and assert on returned values. You do not need fake databases, stubbed HTTP clients, or mocked repositories to verify scoring logic or geometric fusion. Integration tests still matter for the shell---wiring, SQL, and transaction boundaries---but the expensive, branching logic is already proven in isolation.
+
+\subsection{Clear Separation of Concerns}
+\label{sec:fcis_why_separation}
+
+FCIS forces a repeatable shape: \textbf{read} data, \textbf{compute} a result, \textbf{write} or publish. That read-compute-write rhythm matches how we describe use cases to non-developers (``load the readings, figure out where the Kaiju is, store the estimate'') and matches how we draw sequence diagrams. When calculation is buried inside DAO callbacks or controller actions, the story is harder to follow and harder to change.
+
+\subsection{Safer Concurrency}
+\label{sec:fcis_why_concurrency}
+
+Pure functions do not share mutable state. If the core only transforms immutable values, you can call it from multiple threads without locks, and you can parallelise independent calculations when needed. The shell still coordinates I/O and transactions; the core stays embarrassingly parallel friendly.
+
+\subsection{Relationship to Other Architectural Styles}
+\label{sec:fcis_why_other_styles}
+
+FCIS complements other styles taught in this book:
+\begin{itemize}
+    \item In \textbf{three-layered architecture} (Chapter~\ref{ch:three_layered}), services such as \texttt{ConfirmKaijuDetectionService} often grow procedural scripts. FCIS splits the script into pure rules and imperative sequencing.
+    \item In \textbf{hexagonal architecture} (Chapter~\ref{ch:hexagonal}), ports and adapters define \textit{where} technology plugs in; FCIS defines \textit{what} inside the use case must stay pure. A thin \texttt{TriangulateKaijuPositionService} can still depend on \texttt{SensorRepository} and \texttt{SensorDriver} ports while delegating geometry to \texttt{KaijuPositionEstimator}.
+    \item FCIS does not require extra port interfaces. A minimal adoption is one extracted pure class and a slimmer service method.
+\end{itemize}
+
+\section{The Imperative Sandwich}
+\label{sec:fcis_imperative_sandwich}
+
+The \textbf{imperative sandwich} (also called the \textbf{functional core sandwich}) is the request-level flow that FCIS encourages:\autocite{seemannFcis,googleFcis2025}
+\begin{enumerate}
+    \item \textbf{Read (imperative):} the shell fetches data from databases, APIs, sensors, or user input.
+    \item \textbf{Compute (functional):} the shell passes plain data into the core; the core returns a new value with no side effects.
+    \item \textbf{Write (imperative):} the shell persists results, sends responses, publishes events, or triggers hardware.
+\end{enumerate}
+The imperative layers are the bread; the pure core is the filling. Keep the bread thin and the filling rich.
+
+\needspace{12\baselineskip}
+\tododiagram{imperative sandwich: read I/O, pure functional core, write I/O}
+\begin{figure}[htbp]
+\centering
+\diagramplaceholder{read (shell) $\rightarrow$ compute (core) $\rightarrow$ write (shell)}
+\caption{The imperative sandwich: side effects on the outside, pure logic in the middle (diagram to be added).}
+\label{fig:fcis_imperative_sandwich}
+\end{figure}
+
+Figure~\ref{fig:fcis_imperative_sandwich} summarises the pattern. Compare that to a \textbf{fat service} where every method interleaves SQL, conditionals, and mapping---the same use case works, but tests must mimic the world to reach the logic.
+
+\needspace{10\baselineskip}
+\tododiagram{fat service vs imperative sandwich side by side}
+\begin{figure}[htbp]
+\centering
+\diagramplaceholder{left: interleaved I/O and logic in one service; right: thin shell around pure core}
+\caption{Fat service versus imperative sandwich structure (diagram to be added).}
+\label{fig:fcis_fat_vs_sandwich}
+\end{figure}
+
+\subsection{Sandwich in Pseudocode}
+\label{sec:fcis_sandwich_pseudocode}
+
+The following pseudocode (adapted from common FCIS presentations) shows the rhythm for processing an order status. The Java examples later follow the same three steps.
+
+\needspace{14\baselineskip}
+\begin{ridercode}{Java}
+// Imperative shell
+void processOrder(OrderId orderId)
+{
+    Order order = db.find(orderId);              // read
+
+    OrderStatus newStatus =
+        calculateNextStatus(                     // compute (pure)
+            order.status(),
+            order.amount()
+        );
+
+    db.updateStatus(orderId, newStatus);       // write
+}
+
+// Functional core
+OrderStatus calculateNextStatus(
+    OrderStatus status,
+    double amount
+)
+{
+    if (status == PENDING && amount > 100.0)
+    {
+        return REVIEW_REQUIRED;
+    }
+    return APPROVED;
+}
+\end{ridercode}
+\captionof{codesnippet}{Imperative sandwich in pseudocode}
+\label{lst:fcis-sandwich-pseudocode}
+
+Do not pass heavy domain objects with hidden behaviour into the core if you can avoid it. Prefer simple records or maps that the core can treat as dumb data.\autocite{fritzscheFcis} The shell is responsible for mapping from persistence entities and framework types into those records.
+
+\section{Example: Triangulate Kaiju Position (SCN-03)}
+\label{sec:fcis_example_triangulation}
+
+This example builds on the triangulation use case from Chapter~\ref{ch:hexagonal}. We suspect a Kaiju has left a Breach; multiple sensors in the area return uncertain readings. Each reading is an \textit{annular sector}---a direction and distance range, not a single point. We fuse several sectors to narrow the likely position to a small \texttt{EstimatedArea} polygon.
+
+\subsection{Use Case Summary}
+\label{sec:fcis_triangulation_use_case}
+
+The input is a suspected \texttt{Location} and a search \texttt{radius}. The output is an \texttt{EstimatedArea}: a list of \texttt{Location} points outlining a polygon. Sensors within the radius are loaded, polled through type-specific drivers, and converted to \texttt{AnnularSector} values. The geometric fusion is pure mathematics on those sectors; everything involving the ocean, hardware, or database is shell work.
+
+\needspace{20\baselineskip}
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.5\textwidth]{assets/annular-sector-triangulation.png}
+    \caption{Triangulation of multiple annular sectors (reused from the hexagonal chapter).}
+    \label{fig:fcis_annular_triangulation}
+\end{figure}
+
+Figure~\ref{fig:fcis_annular_triangulation} illustrates the idea: each sensor contributes an uncertain region; intersection narrows the Kaiju's likely position. For annular-sector terminology, see Chapter~\ref{ch:hexagonal} and Figure~\ref{fig:annular-sector} there.
+
+\subsection{The Problem: Logic Inside the Service}
+\label{sec:fcis_triangulation_problem}
+
+In the hexagonal chapter, \texttt{TriangulateKaijuPositionService} orchestrates repositories and drivers, but it also contains a private \texttt{computeEstimatedArea} helper for the actual fusion math. That helper is pure logic trapped inside an impure class. It is hard to unit test without constructing the whole service and mocking three ports, even though the geometry only needs a \texttt{List<AnnularSector>}.
+
+The FCIS refactor extracts that helper into a dedicated \textbf{functional core} class and leaves the service as a \textbf{thin imperative shell}.
+
+\subsection{Functional Core: KaijuPositionEstimator}
+\label{sec:fcis_triangulation_core}
+
+We place pure types and logic under \texttt{com.abyssalwatch.core.triangulation}. \texttt{AnnularSector} is a record describing one sensor's uncertain region relative to a target. \texttt{KaijuPositionEstimator} exposes a single honest entry point.
+
+\needspace{16\baselineskip}
+\begin{ridercode}{Java}
+public record AnnularSector(
+    Location sensorLocation,
+    double bearingDegrees,
+    double minDistanceMetres,
+    double maxDistanceMetres,
+    double spreadDegrees
+)
+{
+}
+
+public final class KaijuPositionEstimator
+{
+    private KaijuPositionEstimator() {}
+
+    public static List<Location> estimateArea(
+        List<AnnularSector> sectors
+    )
+    {
+        if (sectors.isEmpty())
+        {
+            return List.of();
+        }
+
+        // Simplified stub: real fusion would intersect sectors.
+        // Focus here is architectural separation, not ocean geometry.
+        return sectors.stream()
+            .map(KaijuPositionEstimator::centrePoint)
+            .distinct()
+            .toList();
+    }
+
+    private static Location centrePoint(AnnularSector sector)
+    {
+        double midDistance =
+            (sector.minDistanceMetres() + sector.maxDistanceMetres()) / 2.0;
+        return Geo.offset(
+            sector.sensorLocation(),
+            sector.bearingDegrees(),
+            midDistance
+        );
+    }
+}
+\end{ridercode}
+\captionof{codesnippet}{\texttt{KaijuPositionEstimator} functional core (simplified fusion)}
+\label{lst:fcis-kaiju-position-estimator}
+
+The implementation is deliberately a stub---the book is about architecture, not computational geometry---but the \textit{boundary} is real: no database, no sensor driver, no logging. Production code would replace the body of \texttt{estimateArea} with a proper intersection algorithm while keeping the signature unchanged.
+
+\subsection{Imperative Shell: TriangulateKaijuPositionService}
+\label{sec:fcis_triangulation_shell}
+
+The shell class lives under \texttt{com.abyssalwatch.shell.triangulation}. It depends on outbound ports (or DAOs) for I/O and calls the core for fusion.
+
+\needspace{24\baselineskip}
+\begin{ridercode}{Java}
+public final class TriangulateKaijuPositionService
+    implements TriangulateKaijuPositionPort
+{
+    private final SensorRepository sensorRepository;
+    private final SensorDriverFactory sensorDriverFactory;
+
+    public TriangulateKaijuPositionService(
+        SensorRepository sensorRepository,
+        SensorDriverFactory sensorDriverFactory
+    )
+    {
+        this.sensorRepository = sensorRepository;
+        this.sensorDriverFactory = sensorDriverFactory;
+    }
+
+    @Override
+    public EstimatedArea triangulate(
+        Location location,
+        double radius
+    )
+    {
+        List<Sensor> sensors =
+            sensorRepository.findAllByCircle(location, radius);
+
+        List<AnnularSector> sectors =
+            pollSensors(sensors, location);
+
+        List<Location> polygon =
+            KaijuPositionEstimator.estimateArea(sectors);
+
+        return new EstimatedArea(polygon);
+    }
+
+    private List<AnnularSector> pollSensors(
+        List<Sensor> sensors,
+        Location target
+    )
+    {
+        List<AnnularSector> sectors = new ArrayList<>();
+
+        for (Sensor sensor : sensors)
+        {
+            SensorDriver driver =
+                sensorDriverFactory.create(sensor.type());
+            sectors.add(driver.poll(target));
+        }
+
+        return List.copyOf(sectors);
+    }
+}
+\end{ridercode}
+\captionof{codesnippet}{Thin shell: read sensors, call core, return result}
+\label{lst:fcis-triangulate-shell}
+
+Read the method top to bottom as an imperative sandwich: \texttt{findAllByCircle} and \texttt{pollSensors} are reads; \texttt{KaijuPositionEstimator.estimateArea} is the pure compute step; returning \texttt{EstimatedArea} is the write to the caller (persistence of the estimate, if needed, would be another shell concern in a follow-up use case).
+
+\subsection{Testing the Core}
+\label{sec:fcis_triangulation_test}
+
+Tests target the core directly. No \texttt{SensorRepository} fake is required to prove that three sectors produce a non-empty polygon.
+
+\needspace{18\baselineskip}
+\begin{ridercode}{Java}
+class KaijuPositionEstimatorTest
+{
+    @Test
+    void estimateArea_withThreeSectors_returnsNonEmptyPolygon()
+    {
+        Location origin = new Location(
+            new Latitude(0.0),
+            new Longitude(0.0)
+        );
+
+        List<AnnularSector> sectors = List.of(
+            sector(origin, 45.0, 100.0, 200.0),
+            sector(origin, 90.0, 100.0, 200.0),
+            sector(origin, 135.0, 100.0, 200.0)
+        );
+
+        List<Location> polygon =
+            KaijuPositionEstimator.estimateArea(sectors);
+
+        assertFalse(polygon.isEmpty());
+    }
+
+    private static AnnularSector sector(
+        Location sensor,
+        double bearing,
+        double minDist,
+        double maxDist
+    )
+    {
+        return new AnnularSector(
+            sensor, bearing, minDist, maxDist, 5.0
+        );
+    }
+}
+\end{ridercode}
+\captionof{codesnippet}{Unit test for \texttt{KaijuPositionEstimator} without mocks}
+\label{lst:fcis-triangulation-test}
+
+If fusion rules change---new weighting for thermal sensors, for example---you edit \texttt{KaijuPositionEstimator} and its tests. Sensor driver protocols can change independently in the shell.
+
+\section{Example: Assess Detection Confidence (SCN-02)}
+\label{sec:fcis_example_detection}
+
+The \textbf{Confirm First Kaiju Detection} use case (SCN-02) appears in Chapter~\ref{ch:three_layered} as a transaction script: load the Breach, create a \texttt{KaijuEntity}, save it. In a realistic system, confirmation should not happen on a single anomalous blip. Operators want corroborating telemetry---radiation spikes plus acoustic patterns---and a confidence score compared to a threshold.
+
+That scoring pipeline is ideal FCIS material: load observations in the shell, assess in the core, then confirm or reject in the shell.
+
+\subsection{Use Case Summary}
+\label{sec:fcis_detection_use_case}
+
+A Scout Vessel reports unusual readings near a Breach. Before we create a confirmed \texttt{Kaiju} record and publish an alert, we:
+\begin{enumerate}
+    \item load recent \texttt{Observation} data for the Breach and vessel,
+    \item compute a confidence score from sensor type, signal strength, and recency,
+    \item if the score meets the threshold, proceed with confirmation; otherwise return a rejection without side effects on Kaiju persistence.
+\end{enumerate}
+
+\needspace{12\baselineskip}
+\tododiagram{detection confidence flow: load observations, pure assess, branch to confirm or reject}
+\begin{figure}[htbp]
+\centering
+\diagramplaceholder{ObservationDao $\rightarrow$ DetectionConfidenceCalculator $\rightarrow$ confirm or reject branch}
+\caption{Detection confidence data flow (diagram to be added).}
+\label{fig:fcis_detection_flow}
+\end{figure}
+
+\subsection{Functional Core: DetectionConfidenceCalculator}
+\label{sec:fcis_detection_core}
+
+Core types are plain records. \texttt{ObservationSnapshot} is the immutable input shape; the shell maps JDBC entities to snapshots before calling the core.
+
+\needspace{22\baselineskip}
+\begin{ridercode}{Java}
+public record ObservationSnapshot(
+    Instant observedAt,
+    SensorType sensorType,
+    double signalStrength
+)
+{
+}
+
+public record DetectionAssessment(
+    double score,
+    boolean meetsThreshold,
+    List<String> reasonCodes
+)
+{
+}
+
+public final class DetectionConfidenceCalculator
+{
+    private static final double RADIATION_WEIGHT = 2.0;
+    private static final double ACOUSTIC_WEIGHT = 1.5;
+    private static final int MIN_OBSERVATIONS = 2;
+
+    private DetectionConfidenceCalculator() {}
+
+    public static DetectionAssessment assess(
+        List<ObservationSnapshot> observations,
+        double threshold,
+        Instant now
+    )
+    {
+        if (observations.size() < MIN_OBSERVATIONS)
+        {
+            return new DetectionAssessment(
+                0.0,
+                false,
+                List.of("INSUFFICIENT_OBSERVATIONS")
+            );
+        }
+
+        double score = observations.stream()
+            .mapToDouble(o -> weightedStrength(o, now))
+            .sum();
+
+        boolean meetsThreshold = score >= threshold;
+        List<String> reasons = meetsThreshold
+            ? List.of("THRESHOLD_MET")
+            : List.of("BELOW_THRESHOLD");
+
+        return new DetectionAssessment(score, meetsThreshold, reasons);
+    }
+
+    private static double weightedStrength(
+        ObservationSnapshot observation,
+        Instant now
+    )
+    {
+        double ageHours = Duration.between(
+            observation.observedAt(),
+            now
+        ).toHours();
+
+        double recencyFactor = Math.max(0.0, 1.0 - (ageHours / 24.0));
+        double typeWeight = switch (observation.sensorType().value())
+        {
+            case "Radiation" -> RADIATION_WEIGHT;
+            case "Acoustic" -> ACOUSTIC_WEIGHT;
+            default -> 1.0;
+        };
+
+        return observation.signalStrength() * typeWeight * recencyFactor;
+    }
+}
+\end{ridercode}
+\captionof{codesnippet}{\texttt{DetectionConfidenceCalculator} functional core}
+\label{lst:fcis-detection-calculator}
+
+Passing \texttt{Instant now} as an argument keeps the function honest and testable. The shell supplies the real clock; tests pass a fixed instant so recency decay is deterministic.
+
+\subsection{Imperative Shell: AssessKaijuDetectionService}
+\label{sec:fcis_detection_shell}
+
+The shell loads rows, maps to snapshots, calls the calculator, and branches. Confirmation persistence reuses the same DAOs as Chapter~\ref{ch:three_layered}'s \texttt{ConfirmKaijuDetectionService}.
+
+\needspace{26\baselineskip}
+\begin{ridercode}{Java}
+public final class AssessKaijuDetectionService
+{
+    private final ObservationDao observationDao;
+    private final BreachDao breachDao;
+    private final KaijuDao kaijuDao;
+    private final UnitOfWork unitOfWork;
+    private final Clock clock;
+
+    public ConfirmKaijuDetectionResult assessAndConfirm(
+        BreachId breachId,
+        String codename,
+        KaijuClassification classification,
+        double confidenceThreshold
+    )
+    {
+        List<ObservationSnapshot> snapshots =
+            loadSnapshots(breachId);
+
+        DetectionAssessment assessment =
+            DetectionConfidenceCalculator.assess(
+                snapshots,
+                confidenceThreshold,
+                clock.instant()
+            );
+
+        if (!assessment.meetsThreshold())
+        {
+            return ConfirmKaijuDetectionResult.rejected(
+                assessment
+            );
+        }
+
+        KaijuId kaijuId = persistConfirmation(
+            breachId,
+            codename,
+            classification
+        );
+
+        return ConfirmKaijuDetectionResult.confirmed(
+            kaijuId,
+            assessment
+        );
+    }
+
+    private List<ObservationSnapshot> loadSnapshots(BreachId breachId)
+    {
+        return observationDao.findRecentByBreach(breachId).stream()
+            .map(row -> new ObservationSnapshot(
+                row.getObservedAt(),
+                new SensorType(row.getSensorType()),
+                row.getSignalStrength()
+            ))
+            .toList();
+    }
+
+    private KaijuId persistConfirmation(
+        BreachId breachId,
+        String codename,
+        KaijuClassification classification
+    )
+    {
+        return unitOfWork.execute(() ->
+        {
+            breachDao.findById(breachId).orElseThrow();
+
+            KaijuEntity kaiju = new KaijuEntity();
+            kaiju.setId(KaijuId.generate().value());
+            kaiju.setCodename(codename);
+            kaiju.setClassification(classification);
+            kaiju.setOriginBreachId(breachId.value());
+
+            kaijuDao.save(kaiju);
+            return new KaijuId(kaiju.getId());
+        });
+    }
+}
+\end{ridercode}
+\captionof{codesnippet}{\texttt{AssessKaijuDetectionService} imperative shell}
+\label{lst:fcis-detection-shell}
+
+The \texttt{if (!assessment.meetsThreshold())} branch is a shell concern: it decides whether to invoke persistence. The \textit{rules} that produced \texttt{meetsThreshold} live entirely in the core.
+
+\subsection{Testing the Core with Table-Driven Cases}
+\label{sec:fcis_detection_test}
+
+Table-driven tests document scoring behaviour without a database.
+
+\needspace{22\baselineskip}
+\begin{ridercode}{Java}
+class DetectionConfidenceCalculatorTest
+{
+    private static final Instant NOW =
+        Instant.parse("2026-06-01T12:00:00Z");
+
+    @Test
+    void assess_twoStrongRadiationSpikes_meetsThreshold()
+    {
+        List<ObservationSnapshot> observations = List.of(
+            snap("2026-06-01T11:55:00Z", "Radiation", 40.0),
+            snap("2026-06-01T11:58:00Z", "Radiation", 45.0)
+        );
+
+        DetectionAssessment result =
+            DetectionConfidenceCalculator.assess(
+                observations,
+                50.0,
+                NOW
+            );
+
+        assertTrue(result.meetsThreshold());
+    }
+
+    @Test
+    void assess_staleObservations_belowThreshold()
+    {
+        List<ObservationSnapshot> observations = List.of(
+            snap("2026-05-28T10:00:00Z", "Radiation", 40.0),
+            snap("2026-05-28T11:00:00Z", "Acoustic", 30.0)
+        );
+
+        DetectionAssessment result =
+            DetectionConfidenceCalculator.assess(
+                observations,
+                50.0,
+                NOW
+            );
+
+        assertFalse(result.meetsThreshold());
+    }
+
+    private static ObservationSnapshot snap(
+        String isoTime,
+        String sensorType,
+        double strength
+    )
+    {
+        return new ObservationSnapshot(
+            Instant.parse(isoTime),
+            new SensorType(sensorType),
+            strength
+        );
+    }
+}
+\end{ridercode}
+\captionof{codesnippet}{Table-driven tests for detection confidence}
+\label{lst:fcis-detection-test}
+
+Adding a new sensor weight or changing the minimum observation count is a one-file change with tests that run in milliseconds.\todoinref{property-based testing chapter for fuzzing ObservationSnapshot lists}
+
+\section{Recommended Package Layout}
+\label{sec:fcis_package_layout}
+
+FCIS benefits from explicit package boundaries. The rule is simple: \texttt{core} must not depend on \texttt{shell}, \texttt{persistence}, or \texttt{presentation}. The shell depends on the core and on infrastructure.
+
+\needspace{12\baselineskip}
+\tododiagram{FCIS package boundary: core has no outward infra imports; shell depends on core}
+\begin{figure}[htbp]
+\centering
+\diagramplaceholder{core (pure) $\leftarrow$ shell (I/O) $\leftarrow$ presentation}
+\caption{FCIS package dependency direction (diagram to be added).}
+\label{fig:fcis_package_boundary}
+\end{figure}
+
+\needspace{16\baselineskip}
+\begin{figure}[htbp]
+\centering
+\begin{minipage}{0.85\textwidth}
+\dirtree{%
+.1 \foldericon\ com.abyssalwatch/.
+.2 \foldericon\ core/.
+.3 \foldericon\ triangulation/.
+.4 \fileicon\ KaijuPositionEstimator.java.
+.4 \fileicon\ AnnularSector.java.
+.3 \foldericon\ detection/.
+.4 \fileicon\ DetectionConfidenceCalculator.java.
+.4 \fileicon\ DetectionAssessment.java.
+.4 \fileicon\ ObservationSnapshot.java.
+.2 \foldericon\ shell/.
+.3 \foldericon\ triangulation/.
+.4 \fileicon\ TriangulateKaijuPositionService.java.
+.3 \foldericon\ detection/.
+.4 \fileicon\ AssessKaijuDetectionService.java.
+.3 \foldericon\ persistence/.
+.4 \fileicon\ JdbcObservationDao.java.
+.2 \foldericon\ presentation/.
+.3 \foldericon\ web/.
+.4 \fileicon\ KaijuDetectionController.java.
+}
+\end{minipage}
+\caption{FCIS-oriented package layout for triangulation and detection examples.}
+\label{fig:fcis_package_layout}
+\end{figure}
+
+Figure~\ref{fig:fcis_package_layout} groups code by FCIS role rather than only by technical layer. You can combine this with layered or hexagonal folders: for example, \texttt{shell.triangulation} may still contain \texttt{adapter} sub-packages behind ports from Chapter~\ref{ch:hexagonal}. The invariant is that \texttt{core} never imports them.
+
+\textbf{Mapping entities at the boundary:} persistence entities such as \texttt{ObservationEntity} stay in the shell. Map to \texttt{ObservationSnapshot} before calling \texttt{DetectionConfidenceCalculator}. Similarly, \texttt{Sensor} domain records from the hexagonal example are shell-side; \texttt{AnnularSector} is the core input after polling.
+
+\section{Testing the Functional Core}
+\label{sec:fcis_testing}
+
+\subsection{What to Test Where}
+\label{sec:fcis_testing_where}
+
+\begin{itemize}
+    \item \textbf{Functional core:} unit tests with fixed inputs; no Spring context, no test containers, no mocked repositories. Aim for branch coverage on rules and calculations.
+    \item \textbf{Imperative shell:} integration tests that verify wiring---SQL mappings, transaction rollback, HTTP status codes. These tests are slower and fewer in number.
+    \item \textbf{End-to-end:} optional smoke tests through the UI or API; not the primary place to prove scoring math.
+\end{itemize}
+
+\subsection{Contrast with Port-Based Testing}
+\label{sec:fcis_testing_vs_ports}
+
+Hexagonal architecture (Chapter~\ref{ch:hexagonal}) tests use cases by substituting fake outbound ports. That remains valuable for shell orchestration. FCIS reduces how much logic those fakes must exercise: if \texttt{KaijuPositionEstimator} is already proven, a triangulation integration test only needs to assert that the service calls the estimator and maps the result---not that intersection math is correct.
+
+\subsection{Guidelines}
+\label{sec:fcis_testing_guidelines}
+
+\begin{itemize}
+    \item Pass time, configuration thresholds, and feature flags \textit{into} the core as parameters rather than reading static singletons.
+    \item Prefer many small pure functions over one large \texttt{assess} method when branches multiply; each function gets its own focused test.
+    \item When a shell test fails, determine whether the bug is in wiring (shell) or rules (core) before fixing; mixing fixes across the boundary recreates a fat service.
+\end{itemize}
+
+\section{Practical Trade-offs}
+\label{sec:fcis_tradeoffs}
+
+Functional Core, Imperative Shell is a deliberate way to spend a little structure up front in exchange for testable calculations. It is not free, and it is not mandatory for every class.
+
+\subsection{Benefits}
+\label{sec:fcis_pros}
+
+When the investment fits the problem, FCIS delivers:
+\begin{itemize}
+    \item \textbf{Fast rule tests:} complex logic runs in unit tests without mocks, as in Code snippets~\ref{lst:fcis-triangulation-test} and~\ref{lst:fcis-detection-test},
+    \item \textbf{Maintainability:} business rule changes concentrate in \texttt{core} packages, away from JDBC and HTTP,
+    \item \textbf{Readability:} the imperative sandwich makes read-compute-write explicit, as in Figure~\ref{fig:fcis_imperative_sandwich},
+    \item \textbf{Concurrency safety:} pure cores avoid shared mutable state during calculation,
+    \item \textbf{Composable logic:} pure functions can be reused across use cases, batch jobs, and reporting pipelines without copying I/O code,
+    \item and \textbf{Alignment with other styles:} FCIS sharpens hexagonal and layered boundaries rather than replacing them, as discussed in Section~\ref{sec:fcis_why_other_styles}.
+\end{itemize}
+
+\subsection{Costs}
+\label{sec:fcis_cons}
+
+Those benefits come with costs teams should expect:
+\begin{itemize}
+    \item \textbf{Extra types and mapping:} snapshots and DTOs at the core boundary add classes and conversion code,
+    \item \textbf{Split methods:} one procedural service becomes a shell class plus one or more core classes,
+    \item \textbf{Discipline required:} without import rules, \texttt{core} packages accumulate static database access and ``temporary'' logging,
+    \item \textbf{Not every line benefits:} pass-through CRUD with no rules gains little from FCIS,
+    \item and \textbf{Learning curve:} developers must recognise what belongs in the core versus the shell.
+\end{itemize}
+
+\subsection{Things to Consider Before Deciding}
+\label{sec:fcis_when_to_choose}
+
+Favour Functional Core, Imperative Shell when:
+\begin{itemize}
+    \item calculations, scoring, reconciliation, or multi-step data transformations dominate a feature,
+    \item rules change frequently and must be regression-tested,
+    \item the same logic must run in the live app, batch jobs, and offline analysis,
+    \item you need deterministic tests without standing up infrastructure,
+    \item concurrent or parallel execution of business logic is on the roadmap,
+    \item and existing services are hard to test because logic is interleaved with SQL and messaging.
+\end{itemize}
+
+Question or defer FCIS when:
+\begin{itemize}
+    \item the feature is thin CRUD with at most one or two trivial branches,
+    \item the team will not enforce package or import boundaries,
+    \item you are building a throwaway prototype,
+    \item all behaviour is already a single honest pure function with no I/O in the same class,
+    \item and splitting would produce more boilerplate than testable logic.
+\end{itemize}
+
+When uncertain, extract one pure function from the hottest path---often a private helper in an oversized service---and measure whether tests become simpler. Deepen the split only where the payoff is clear.
+
+\subsection{Common Implementation Mistakes}
+\label{sec:fcis_common_mistakes}
+
+The first group of mistakes weakens purity in the core:
+\begin{itemize}
+    \item logging or metrics inside core methods,
+    \item injecting repositories or HTTP clients into core classes,
+    \item reading configuration singletons or environment variables in the core instead of passing values as parameters,
+    \item mutating input lists or records passed from the shell,
+    \item and calling \texttt{Instant.now()} inside the core rather than accepting time as an argument.
+\end{itemize}
+
+The next group leaves too much logic in the shell:
+\begin{itemize}
+    \item long \texttt{if/else} chains in services that should be pure functions,
+    \item scoring duplicated across REST controllers and batch importers instead of shared core code,
+    \item returning different DTO shapes from the core (the core should return domain-neutral values; the shell maps to API contracts),
+    \item and ``anemic shell'' services that only delegate while the core performs I/O through static helpers---a fake split.
+\end{itemize}
+
+Finally, some mistakes come from structure without discipline:
+\begin{itemize}
+    \item creating \texttt{core} and \texttt{shell} packages but allowing cross-imports in both directions,
+    \item passing live domain entities with behaviour into the core when a snapshot record would suffice,
+    \item testing only through HTTP while complex math remains untested at the unit level,
+    \item and applying FCIS to every class uniformly instead of focusing on calculation-heavy areas.
+\end{itemize}
+
+Most mistakes boil down to the same rule: the core must be honest and pure; the shell owns the messy world. When that holds, both Abyssal Watch examples in this chapter stay easy to evolve---new sensor weights in \texttt{DetectionConfidenceCalculator}, better fusion in \texttt{KaijuPositionEstimator}, without rewiring the ocean.
+
+\needspace{8\baselineskip}
+\subsection{Closing Thoughts}
+\label{sec:fcis_closing}
+
+We opened with functional programming vocabulary---pure and impure functions, honest signatures, immutable values, and side effects---then applied those ideas through the imperative sandwich. The triangulation example (Section~\ref{sec:fcis_example_triangulation}) moved geometric fusion into \texttt{KaijuPositionEstimator}; the detection example (Section~\ref{sec:fcis_example_detection}) moved scoring into \texttt{DetectionConfidenceCalculator}. In both cases the shell reads and writes; the core computes.
+
+FCIS works in Java without adopting a new framework. Records, static pure methods, explicit packages, and disciplined imports are enough to start. Combine FCIS with the architectural styles elsewhere in this book: layers and hexagons tell you how to organise modules and ports; FCIS tells you how to keep the behaviour inside them testable and honest.
