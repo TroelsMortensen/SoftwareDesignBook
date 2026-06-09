@@ -1,15 +1,27 @@
 \chapter{Functional Core, Imperative Shell}
 \label{ch:fcis}
 
-Functional Core, Imperative Shell (FCIS) is an architectural discipline for separating \textit{what to decide} from \textit{how to reach the outside world}.\autocite{bernhardt2012boundaries,seemannFcis} The \textbf{functional core} holds business rules, calculations, and data transformations as pure, deterministic code. The \textbf{imperative shell} performs side effects: loading data, calling external systems, saving results, and publishing messages. Gary Bernhardt popularised the idea in his \textit{Boundaries} talk; since then it has become a practical way to keep complex logic testable in mainstream object-oriented languages.\autocite{googleFcis2025,ssenseFcis,fritzscheFcis}
+Functional Core, Imperative Shell (FCIS) is an architectural discipline for separating \textit{what to decide} from \textit{how to reach the outside world}
+\autocite{bernhardt2012boundaries,seemannFcis}.
 
-FCIS is not a replacement for layered or hexagonal architecture. It is a cross-cutting refinement you can apply \textit{inside} a service class, a package, or a module. A hexagonal use case can still have ports and adapters; FCIS tells you where the pure calculation lives and where orchestration belongs. A three-layered \texttt{ConfirmKaijuDetectionService} can still own transactions; FCIS tells you which lines are scoring rules and which lines touch the database.
+While I don't get the impression that this pattern is widely used, and I don't have much experience with it, I personally like it for its simplicity and its ability to isolate the pure logic from the outside world, which makes it \textit{very} easy to test. Your logic code can also be broken down into small functions, generally making your code easier to understand and maintain.
+
+The \textbf{functional core} holds business rules, calculations, and data transformations as pure, deterministic code. The \textbf{imperative shell} performs side effects: receiving input from the outside world (presentation layer, web api, cli, gui, etc.),loading data, calling external systems, saving results, and publishing messages. All these activities are interacting with the outside world.
+
+Gary Bernhardt popularised the idea in his \textit{Boundaries} talk; since then it has become a practical way to keep complex logic testable in mainstream object-oriented languages.\autocite{googleFcis2025,ssenseFcis,fritzscheFcis}
+
+FCIS is not necessarily a replacement for layered or hexagonal architecture. It can be incorporated into these architectures, or it can be used standalone. It is a cross-cutting refinement you can apply \textit{inside} a service class, a package, or a module. A hexagonal use case can still have ports and adapters; FCIS tells you where the pure calculation lives and where orchestration belongs. Any calculation-heavy service---whether it owns transactions, calls repositories, or publishes events---benefits from the same split between pure rules and imperative wiring.
+
+I will, however, try to minimize references to hexagonal architecture, and other architectural styles, to keep the focus on the FCIS pattern itself. You may then extract ideas and apply them to other architectures, if you like.
 
 In this chapter we use the \texttt{Abyssal Watch} case study with two running examples:
 \begin{itemize}
     \item \textbf{SCN-03 --- Triangulate Kaiju Position:} fuse multiple sensor readings into an estimated area (geometry and data fusion),
-    \item \textbf{SCN-02 --- Assess Detection Confidence:} score recent telemetry before confirming a Kaiju (rules and weighted calculation).
+    \item \textbf{SCN-04 --- Reconcile Mission Telemetry:} merge partially uplinked observations when a Scout Vessel docks (sync and deduplication).
 \end{itemize}
+
+The first example revisits triangulation from Chapter~\ref{ch:hexagonal} through an FCIS lens: we extract pure fusion math from a service you have already seen. The second example introduces a \textbf{new} retrieval-time problem---intermittent uplink during mission closure---that has not appeared in prior chapters.
+
 Both examples highlight where functional programming ideas shine: multi-step transformations where you want fast, deterministic unit tests without mocks or databases.
 
 We begin with a brief introduction to functional programming concepts, then define the FCIS pattern, the \textit{imperative sandwich}, and work through both examples end to end.
@@ -50,54 +62,42 @@ A \textbf{pure function} is deterministic and free of side effects: given the sa
 
 Pure functions are the building blocks of the functional core. Impure functions belong in the imperative shell. The boundary is pragmatic: a method that only transforms in-memory data structures is pure; a method that opens a JDBC connection is not.
 
-Code snippet~\ref{lst:fcis-impure-confirm} shows an impure method that mixes scoring with persistence. Code snippet~\ref{lst:fcis-pure-confirm} extracts the decision into a pure function; the shell (not shown here) would load observations and save the Kaiju.
+Code snippet~\ref{lst:fcis-impure-summarize} shows an impure method that mixes a database read with a simple calculation. Code snippet~\ref{lst:fcis-pure-summarize} extracts the calculation into a pure function; the shell (not shown here) would load observations and pass them in.
 
-\needspace{18\baselineskip}
+\needspace{14\baselineskip}
 \begin{ridercode}{Java}
-// Impure: loads data and saves inside the "calculation"
-public KaijuId confirmIfConfident(BreachId breachId, String codename)
+// Impure: loads data inside the "calculation"
+public double summarizeObservations(MissionId missionId)
 {
-  List<ObservationEntity> rows =
-      observationDao.findRecentByBreach(breachId);
+    List<ObservationEntity> rows =
+        observationDao.findByMission(missionId);
 
-  double score = 0.0;
-  for (ObservationEntity row : rows)
-  {
-    score += row.getSignalStrength();
-  }
+    double total = 0.0;
+    for (ObservationEntity row : rows)
+    {
+        total += row.getSignalStrength();
+    }
 
-  if (score < CONFIDENCE_THRESHOLD)
-  {
-    throw new InsufficientConfidenceException();
-  }
-
-  KaijuEntity kaiju = new KaijuEntity();
-  kaiju.setCodename(codename);
-  kaijuDao.save(kaiju);
-  return new KaijuId(kaiju.getId());
+    return total;
 }
 \end{ridercode}
-\captionof{codesnippet}{Impure confirmation: scoring mixed with database access}
-\label{lst:fcis-impure-confirm}
+\captionof{codesnippet}{Impure summary: database access mixed with calculation}
+\label{lst:fcis-impure-summarize}
 
-\needspace{12\baselineskip}
+\needspace{10\baselineskip}
 \begin{ridercode}{Java}
-// Pure: same inputs always yield the same assessment
-public static DetectionAssessment assess(
-    List<ObservationSnapshot> observations,
-    double threshold
+// Pure: same inputs always yield the same total
+public static double summarizeSignalStrength(
+    List<ObservationSnapshot> observations
 )
 {
-  double score = observations.stream()
-      .mapToDouble(ObservationSnapshot::signalStrength)
-      .sum();
-
-  boolean meetsThreshold = score >= threshold;
-  return new DetectionAssessment(score, meetsThreshold);
+    return observations.stream()
+        .mapToDouble(ObservationSnapshot::signalStrength)
+        .sum();
 }
 \end{ridercode}
-\captionof{codesnippet}{Pure assessment: explicit inputs, explicit result}
-\label{lst:fcis-pure-confirm}
+\captionof{codesnippet}{Pure summary: explicit inputs, explicit result}
+\label{lst:fcis-pure-summarize}
 
 \subsection{Immutable and Mutable Data}
 \label{sec:fcis_immutable_mutable}
@@ -126,7 +126,7 @@ Side effects are necessary in real systems. FCIS confines them to the imperative
 Java is not a functional language, but FCIS maps cleanly onto familiar tools:
 \begin{itemize}
     \item \textbf{Core package:} \texttt{static} pure methods or small \texttt{final} classes with no infrastructure imports. No Spring, JDBC, JPA, or HTTP types.
-    \item \textbf{Value types:} Java \texttt{record} for inputs and outputs (\texttt{ObservationSnapshot}, \texttt{DetectionAssessment}, \texttt{AnnularSector}).
+    \item \textbf{Value types:} Java \texttt{record} for inputs and outputs (\texttt{ObservationSnapshot}, \texttt{ReconciledTelemetry}, \texttt{AnnularSector}).
     \item \textbf{Shell package:} services that inject DAOs, repositories, and messaging adapters; they load data, call the core, then persist or publish results.
     \item \textbf{Immutability:} \texttt{final} fields on services; defensive copies at the core boundary.
     \item \textbf{Optional:} express absence without \texttt{null}; the core returns data, the shell decides whether to throw or map to HTTP errors.
@@ -203,15 +203,14 @@ The following pseudocode (adapted from common FCIS presentations) shows the rhyt
 // Imperative shell
 void processOrder(OrderId orderId)
 {
-    Order order = db.find(orderId);              // read
+    Order order = db.find(orderId);
 
-    OrderStatus newStatus =
-        calculateNextStatus(                     // compute (pure)
-            order.status(),
-            order.amount()
-        );
+    OrderStatus newStatus = calculateNextStatus(
+        order.status(),
+        order.amount()
+    );
 
-    db.updateStatus(orderId, newStatus);       // write
+    db.updateStatus(orderId, newStatus);
 }
 
 // Functional core
@@ -224,6 +223,7 @@ OrderStatus calculateNextStatus(
     {
         return REVIEW_REQUIRED;
     }
+
     return APPROVED;
 }
 \end{ridercode}
@@ -235,27 +235,40 @@ Do not pass heavy domain objects with hidden behaviour into the core if you can 
 \section{Example: Triangulate Kaiju Position (SCN-03)}
 \label{sec:fcis_example_triangulation}
 
-This example builds on the triangulation use case from Chapter~\ref{ch:hexagonal}. We suspect a Kaiju has left a Breach; multiple sensors in the area return uncertain readings. Each reading is an \textit{annular sector}---a direction and distance range, not a single point. We fuse several sectors to narrow the likely position to a small \texttt{EstimatedArea} polygon.
+This example revisits the triangulation use case from Chapter~\ref{ch:hexagonal}---our \textbf{known} example. We suspect a Kaiju has left a Breach; multiple sensors in the area return uncertain readings. Each reading is an \textit{annular sector}---a direction and distance range, not a single point. We fuse several sectors to narrow the likely position to a small \texttt{EstimatedArea} polygon.
+
+In the hexagonal chapter, ports and adapters framed the problem; fusion math remained a private stub inside \texttt{TriangulateKaijuPositionService}. FCIS reframes that stub as the functional core and leaves the service as a thin imperative shell.
 
 \subsection{Use Case Summary}
 \label{sec:fcis_triangulation_use_case}
 
 The input is a suspected \texttt{Location} and a search \texttt{radius}. The output is an \texttt{EstimatedArea}: a list of \texttt{Location} points outlining a polygon. Sensors within the radius are loaded, polled through type-specific drivers, and converted to \texttt{AnnularSector} values. The geometric fusion is pure mathematics on those sectors; everything involving the ocean, hardware, or database is shell work.
 
-\needspace{20\baselineskip}
+%\needspace{20\baselineskip}
+%\begin{figure}[htbp]
+%    \centering
+%    \includegraphics[width=0.5\textwidth]{assets/annular-sector-triangulation.png}
+%    \caption{Triangulation of multiple annular sectors (reused from the hexagonal chapter).}
+%    \label{fig:fcis_annular_triangulation}
+%\end{figure}
+
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.5\textwidth]{assets/annular-sector-triangulation.png}
-    \caption{Triangulation of multiple annular sectors (reused from the hexagonal chapter).}
+    % Placeholder for triangulation diagram
+    %\includegraphics[width=0.6\textwidth]{assets/triangulation-placeholder.png}
+    \fbox{\parbox{0.6\textwidth}{\centering Placeholder: triangulation of annular sectors\\[2ex]\strut}}
+    \caption{Triangulation of multiple annular sectors to estimate Kaiju position.}
     \label{fig:fcis_annular_triangulation}
 \end{figure}
+\todo{Replace placeholder with a domain-specific triangulation diagram illustrating the intersection of annular sectors. Reference annular sector diagram from hexagonal chapter.}
+
 
 Figure~\ref{fig:fcis_annular_triangulation} illustrates the idea: each sensor contributes an uncertain region; intersection narrows the Kaiju's likely position. For annular-sector terminology, see Chapter~\ref{ch:hexagonal} and Figure~\ref{fig:annular-sector} there.
 
 \subsection{The Problem: Logic Inside the Service}
 \label{sec:fcis_triangulation_problem}
 
-In the hexagonal chapter, \texttt{TriangulateKaijuPositionService} orchestrates repositories and drivers, but it also contains a private \texttt{computeEstimatedArea} helper for the actual fusion math. That helper is pure logic trapped inside an impure class. It is hard to unit test without constructing the whole service and mocking three ports, even though the geometry only needs a \texttt{List<AnnularSector>}.
+Recall Code snippet~\ref{lst:triangulate-service-compute-area} from Chapter~\ref{ch:hexagonal}: \texttt{computeEstimatedArea} is pure logic trapped inside an impure service class. It is hard to unit test without constructing the whole service and mocking three ports, even though the geometry only needs a \texttt{List<AnnularSector>}.
 
 The FCIS refactor extracts that helper into a dedicated \textbf{functional core} class and leaves the service as a \textbf{thin imperative shell}.
 
@@ -278,7 +291,9 @@ public record AnnularSector(
 
 public final class KaijuPositionEstimator
 {
-    private KaijuPositionEstimator() {}
+    private KaijuPositionEstimator()
+    {
+    }
 
     public static List<Location> estimateArea(
         List<AnnularSector> sectors
@@ -290,7 +305,6 @@ public final class KaijuPositionEstimator
         }
 
         // Simplified stub: real fusion would intersect sectors.
-        // Focus here is architectural separation, not ocean geometry.
         return sectors.stream()
             .map(KaijuPositionEstimator::centrePoint)
             .distinct()
@@ -300,7 +314,9 @@ public final class KaijuPositionEstimator
     private static Location centrePoint(AnnularSector sector)
     {
         double midDistance =
-            (sector.minDistanceMetres() + sector.maxDistanceMetres()) / 2.0;
+            (sector.minDistanceMetres()
+                + sector.maxDistanceMetres()) / 2.0;
+
         return Geo.offset(
             sector.sensorLocation(),
             sector.bearingDegrees(),
@@ -343,7 +359,10 @@ public final class TriangulateKaijuPositionService
     )
     {
         List<Sensor> sensors =
-            sensorRepository.findAllByCircle(location, radius);
+            sensorRepository.findAllByCircle(
+                location,
+                radius
+            );
 
         List<AnnularSector> sectors =
             pollSensors(sensors, location);
@@ -365,6 +384,7 @@ public final class TriangulateKaijuPositionService
         {
             SensorDriver driver =
                 sensorDriverFactory.create(sensor.type());
+
             sectors.add(driver.poll(target));
         }
 
@@ -414,7 +434,11 @@ class KaijuPositionEstimatorTest
     )
     {
         return new AnnularSector(
-            sensor, bearing, minDist, maxDist, 5.0
+            sensor,
+            bearing,
+            minDist,
+            maxDist,
+            5.0
         );
     }
 }
@@ -424,40 +448,43 @@ class KaijuPositionEstimatorTest
 
 If fusion rules change---new weighting for thermal sensors, for example---you edit \texttt{KaijuPositionEstimator} and its tests. Sensor driver protocols can change independently in the shell.
 
-\section{Example: Assess Detection Confidence (SCN-02)}
-\label{sec:fcis_example_detection}
+\section{Example: Reconcile Mission Telemetry (SCN-04)}
+\label{sec:fcis_example_reconciliation}
 
-The \textbf{Confirm First Kaiju Detection} use case (SCN-02) appears in Chapter~\ref{ch:three_layered} as a transaction script: load the Breach, create a \texttt{KaijuEntity}, save it. In a realistic system, confirmation should not happen on a single anomalous blip. Operators want corroborating telemetry---radiation spikes plus acoustic patterns---and a confidence score compared to a threshold.
+This is our \textbf{new} example. Scout Vessel \texttt{S-402 ``Mantis''} had intermittent uplink during the \texttt{Retrieval} phase of a mission. Some observations synced over the air; the rest arrive when the vessel docks at the Command Carrier. Before the mission can move toward \texttt{Completed} (invariant INV-05), the system must produce one consistent observation timeline.
 
-That scoring pipeline is ideal FCIS material: load observations in the shell, assess in the core, then confirm or reject in the shell.
+That merge-and-deduplicate pipeline is ideal FCIS material: load both batches in the shell, reconcile in the core, persist the result in the shell.
 
 \subsection{Use Case Summary}
-\label{sec:fcis_detection_use_case}
+\label{sec:fcis_reconciliation_use_case}
 
-A Scout Vessel reports unusual readings near a Breach. Before we create a confirmed \texttt{Kaiju} record and publish an alert, we:
+When a retrieval order closes the tracking window, operators need a single authoritative observation set. The workflow is:
 \begin{enumerate}
-    \item load recent \texttt{Observation} data for the Breach and vessel,
-    \item compute a confidence score from sensor type, signal strength, and recency,
-    \item if the score meets the threshold, proceed with confirmation; otherwise return a rejection without side effects on Kaiju persistence.
+    \item \textbf{Read:} load observations already synced for the mission, plus the dock-upload batch from the returning Scout Vessel,
+    \item \textbf{Compute:} merge, sort by timestamp, and deduplicate overlapping readings,
+    \item \textbf{Write:} persist the reconciled timeline so downstream mission-closure checks can proceed.
 \end{enumerate}
 
 \needspace{12\baselineskip}
-\tododiagram{detection confidence flow: load observations, pure assess, branch to confirm or reject}
+\tododiagram{telemetry reconciliation: stored batch + dock upload → TelemetryReconciler → persist}
 \begin{figure}[htbp]
 \centering
-\diagramplaceholder{ObservationDao $\rightarrow$ DetectionConfidenceCalculator $\rightarrow$ confirm or reject branch}
-\caption{Detection confidence data flow (diagram to be added).}
-\label{fig:fcis_detection_flow}
+\diagramplaceholder{stored batch + dock upload $\rightarrow$ TelemetryReconciler $\rightarrow$ persist}
+\caption{Telemetry reconciliation data flow (diagram to be added).}
+\label{fig:fcis_reconciliation_flow}
 \end{figure}
 
-\subsection{Functional Core: DetectionConfidenceCalculator}
-\label{sec:fcis_detection_core}
+Figure~\ref{fig:fcis_reconciliation_flow} shows the imperative sandwich: two read paths feed one pure merge; the shell owns persistence and any mission-state transition.
 
-Core types are plain records. \texttt{ObservationSnapshot} is the immutable input shape; the shell maps JDBC entities to snapshots before calling the core.
+\subsection{Functional Core: TelemetryReconciler}
+\label{sec:fcis_reconciliation_core}
 
-\needspace{22\baselineskip}
+Core types live under \texttt{com.abyssalwatch.core.telemetry}. \texttt{ObservationSnapshot} is the immutable input shape; the shell maps JDBC entities and dock-upload records to snapshots before calling the core.
+
+\needspace{28\baselineskip}
 \begin{ridercode}{Java}
 public record ObservationSnapshot(
+    ObservationId id,
     Instant observedAt,
     SensorType sensorType,
     double signalStrength
@@ -465,231 +492,293 @@ public record ObservationSnapshot(
 {
 }
 
-public record DetectionAssessment(
-    double score,
-    boolean meetsThreshold,
-    List<String> reasonCodes
+public record ReconciliationPolicy(
+    Duration duplicateWindow
 )
 {
 }
 
-public final class DetectionConfidenceCalculator
+public record ReconciledTelemetry(
+    List<ObservationSnapshot> observations,
+    int duplicateCount,
+    double completenessRatio
+)
 {
-    private static final double RADIATION_WEIGHT = 2.0;
-    private static final double ACOUSTIC_WEIGHT = 1.5;
-    private static final int MIN_OBSERVATIONS = 2;
+}
 
-    private DetectionConfidenceCalculator() {}
-
-    public static DetectionAssessment assess(
-        List<ObservationSnapshot> observations,
-        double threshold,
-        Instant now
-    )
+public final class TelemetryReconciler
+{
+    private TelemetryReconciler()
     {
-        if (observations.size() < MIN_OBSERVATIONS)
-        {
-            return new DetectionAssessment(
-                0.0,
-                false,
-                List.of("INSUFFICIENT_OBSERVATIONS")
-            );
-        }
-
-        double score = observations.stream()
-            .mapToDouble(o -> weightedStrength(o, now))
-            .sum();
-
-        boolean meetsThreshold = score >= threshold;
-        List<String> reasons = meetsThreshold
-            ? List.of("THRESHOLD_MET")
-            : List.of("BELOW_THRESHOLD");
-
-        return new DetectionAssessment(score, meetsThreshold, reasons);
     }
 
-    private static double weightedStrength(
-        ObservationSnapshot observation,
-        Instant now
+    public static ReconciledTelemetry merge(
+        List<ObservationSnapshot> alreadySynced,
+        List<ObservationSnapshot> dockUpload,
+        ReconciliationPolicy policy
     )
     {
-        double ageHours = Duration.between(
-            observation.observedAt(),
-            now
-        ).toHours();
+        List<ObservationSnapshot> combined =
+            new ArrayList<>(alreadySynced);
+        combined.addAll(dockUpload);
 
-        double recencyFactor = Math.max(0.0, 1.0 - (ageHours / 24.0));
-        double typeWeight = switch (observation.sensorType().value())
+        combined.sort(Comparator.comparing(
+            ObservationSnapshot::observedAt
+        ));
+
+        List<ObservationSnapshot> deduped =
+            deduplicate(combined, policy.duplicateWindow());
+
+        int duplicateCount =
+            combined.size() - deduped.size();
+
+        int expectedCount = combined.size();
+        double completeness = expectedCount == 0
+            ? 1.0
+            : (double) deduped.size() / expectedCount;
+
+        return new ReconciledTelemetry(
+            List.copyOf(deduped),
+            duplicateCount,
+            completeness
+        );
+    }
+
+    private static List<ObservationSnapshot> deduplicate(
+        List<ObservationSnapshot> sorted,
+        Duration window
+    )
+    {
+        List<ObservationSnapshot> result =
+            new ArrayList<>();
+
+        for (ObservationSnapshot current : sorted)
         {
-            case "Radiation" -> RADIATION_WEIGHT;
-            case "Acoustic" -> ACOUSTIC_WEIGHT;
-            default -> 1.0;
-        };
+            Optional<ObservationSnapshot> existing =
+                findDuplicate(result, current, window);
 
-        return observation.signalStrength() * typeWeight * recencyFactor;
+            if (existing.isEmpty())
+            {
+                result.add(current);
+                continue;
+            }
+
+            if (current.signalStrength()
+                > existing.get().signalStrength())
+            {
+                result.remove(existing.get());
+                result.add(current);
+            }
+        }
+
+        return result;
+    }
+
+    private static Optional<ObservationSnapshot> findDuplicate(
+        List<ObservationSnapshot> kept,
+        ObservationSnapshot candidate,
+        Duration window
+    )
+    {
+        for (ObservationSnapshot other : kept)
+        {
+            boolean sameSensor = other.sensorType()
+                .equals(candidate.sensorType());
+
+            Duration gap = Duration.between(
+                other.observedAt(),
+                candidate.observedAt()
+            ).abs();
+
+            if (sameSensor && gap.compareTo(window) <= 0)
+            {
+                return Optional.of(other);
+            }
+        }
+
+        return Optional.empty();
     }
 }
 \end{ridercode}
-\captionof{codesnippet}{\texttt{DetectionConfidenceCalculator} functional core}
-\label{lst:fcis-detection-calculator}
+\captionof{codesnippet}{\texttt{TelemetryReconciler} functional core}
+\label{lst:fcis-reconciliation-core}
 
-Passing \texttt{Instant now} as an argument keeps the function honest and testable. The shell supplies the real clock; tests pass a fixed instant so recency decay is deterministic.
+The deduplication rule keeps the stronger signal when two readings share a sensor type within the configured window. Production code might key on \texttt{ObservationId} or sensor serial numbers; here the focus is the architectural boundary: no DAO, no file reader, no mission-state update inside the core.
 
-\subsection{Imperative Shell: AssessKaijuDetectionService}
-\label{sec:fcis_detection_shell}
+\subsection{Imperative Shell: ReconcileMissionTelemetryService}
+\label{sec:fcis_reconciliation_shell}
 
-The shell loads rows, maps to snapshots, calls the calculator, and branches. Confirmation persistence reuses the same DAOs as Chapter~\ref{ch:three_layered}'s \texttt{ConfirmKaijuDetectionService}.
+The shell loads both batches, maps to snapshots, calls the reconciler, and persists the merged result.
 
 \needspace{26\baselineskip}
 \begin{ridercode}{Java}
-public final class AssessKaijuDetectionService
+public final class ReconcileMissionTelemetryService
 {
     private final ObservationDao observationDao;
-    private final BreachDao breachDao;
-    private final KaijuDao kaijuDao;
+    private final DockUploadReader dockUploadReader;
     private final UnitOfWork unitOfWork;
-    private final Clock clock;
 
-    public ConfirmKaijuDetectionResult assessAndConfirm(
-        BreachId breachId,
-        String codename,
-        KaijuClassification classification,
-        double confidenceThreshold
+    public ReconciledTelemetry reconcile(
+        MissionId missionId,
+        VesselId vesselId,
+        ReconciliationPolicy policy
     )
     {
-        List<ObservationSnapshot> snapshots =
-            loadSnapshots(breachId);
+        List<ObservationSnapshot> synced =
+            loadSynced(missionId);
 
-        DetectionAssessment assessment =
-            DetectionConfidenceCalculator.assess(
-                snapshots,
-                confidenceThreshold,
-                clock.instant()
+        List<ObservationSnapshot> dockBatch =
+            dockUploadReader.read(vesselId);
+
+        ReconciledTelemetry merged =
+            TelemetryReconciler.merge(
+                synced,
+                dockBatch,
+                policy
             );
 
-        if (!assessment.meetsThreshold())
-        {
-            return ConfirmKaijuDetectionResult.rejected(
-                assessment
-            );
-        }
+        persistMerged(missionId, merged);
 
-        KaijuId kaijuId = persistConfirmation(
-            breachId,
-            codename,
-            classification
-        );
-
-        return ConfirmKaijuDetectionResult.confirmed(
-            kaijuId,
-            assessment
-        );
+        return merged;
     }
 
-    private List<ObservationSnapshot> loadSnapshots(BreachId breachId)
+    private List<ObservationSnapshot> loadSynced(
+        MissionId missionId
+    )
     {
-        return observationDao.findRecentByBreach(breachId).stream()
-            .map(row -> new ObservationSnapshot(
-                row.getObservedAt(),
-                new SensorType(row.getSensorType()),
-                row.getSignalStrength()
-            ))
+        return observationDao
+            .findSyncedByMission(missionId)
+            .stream()
+            .map(this::toSnapshot)
             .toList();
     }
 
-    private KaijuId persistConfirmation(
-        BreachId breachId,
-        String codename,
-        KaijuClassification classification
+    private ObservationSnapshot toSnapshot(
+        ObservationEntity row
     )
     {
-        return unitOfWork.execute(() ->
+        return new ObservationSnapshot(
+            new ObservationId(row.getId()),
+            row.getObservedAt(),
+            new SensorType(row.getSensorType()),
+            row.getSignalStrength()
+        );
+    }
+
+    private void persistMerged(
+        MissionId missionId,
+        ReconciledTelemetry merged
+    )
+    {
+        unitOfWork.execute(() ->
         {
-            breachDao.findById(breachId).orElseThrow();
-
-            KaijuEntity kaiju = new KaijuEntity();
-            kaiju.setId(KaijuId.generate().value());
-            kaiju.setCodename(codename);
-            kaiju.setClassification(classification);
-            kaiju.setOriginBreachId(breachId.value());
-
-            kaijuDao.save(kaiju);
-            return new KaijuId(kaiju.getId());
+            observationDao.replaceMissionObservations(
+                missionId,
+                merged.observations()
+            );
+            return null;
         });
     }
 }
 \end{ridercode}
-\captionof{codesnippet}{\texttt{AssessKaijuDetectionService} imperative shell}
-\label{lst:fcis-detection-shell}
+\captionof{codesnippet}{\texttt{ReconcileMissionTelemetryService} imperative shell}
+\label{lst:fcis-reconciliation-shell}
 
-The \texttt{if (!assessment.meetsThreshold())} branch is a shell concern: it decides whether to invoke persistence. The \textit{rules} that produced \texttt{meetsThreshold} live entirely in the core.
+Whether the mission may transition toward \texttt{Completed} is a separate shell concern: it would read \texttt{ReconciledTelemetry.completenessRatio()} and vessel recovery state, then apply INV-05. The merge rules themselves stay in \texttt{TelemetryReconciler}.
 
 \subsection{Testing the Core with Table-Driven Cases}
-\label{sec:fcis_detection_test}
+\label{sec:fcis_reconciliation_test}
 
-Table-driven tests document scoring behaviour without a database.
+Table-driven tests document reconciliation behaviour without a database.
 
-\needspace{22\baselineskip}
+\needspace{24\baselineskip}
 \begin{ridercode}{Java}
-class DetectionConfidenceCalculatorTest
+class TelemetryReconcilerTest
 {
-    private static final Instant NOW =
-        Instant.parse("2026-06-01T12:00:00Z");
+    private static final ReconciliationPolicy POLICY =
+        new ReconciliationPolicy(Duration.ofMinutes(5));
 
     @Test
-    void assess_twoStrongRadiationSpikes_meetsThreshold()
+    void merge_duplicateWithinWindow_keepsStrongerSignal()
     {
-        List<ObservationSnapshot> observations = List.of(
-            snap("2026-06-01T11:55:00Z", "Radiation", 40.0),
-            snap("2026-06-01T11:58:00Z", "Radiation", 45.0)
+        Instant t = Instant.parse("2026-06-01T12:00:00Z");
+
+        List<ObservationSnapshot> synced = List.of(
+            snap("obs-1", t, "Radiation", 30.0)
         );
 
-        DetectionAssessment result =
-            DetectionConfidenceCalculator.assess(
-                observations,
-                50.0,
-                NOW
-            );
+        List<ObservationSnapshot> dock = List.of(
+            snap("obs-2", t.plusSeconds(60), "Radiation", 45.0)
+        );
 
-        assertTrue(result.meetsThreshold());
+        ReconciledTelemetry result =
+            TelemetryReconciler.merge(synced, dock, POLICY);
+
+        assertEquals(1, result.observations().size());
+        assertEquals(45.0, result.observations().get(0)
+            .signalStrength());
+        assertEquals(1, result.duplicateCount());
     }
 
     @Test
-    void assess_staleObservations_belowThreshold()
+    void merge_dockOnlyRecords_appended()
     {
-        List<ObservationSnapshot> observations = List.of(
-            snap("2026-05-28T10:00:00Z", "Radiation", 40.0),
-            snap("2026-05-28T11:00:00Z", "Acoustic", 30.0)
+        Instant t = Instant.parse("2026-06-01T12:00:00Z");
+
+        List<ObservationSnapshot> synced = List.of(
+            snap("obs-1", t, "Radiation", 30.0)
         );
 
-        DetectionAssessment result =
-            DetectionConfidenceCalculator.assess(
-                observations,
-                50.0,
-                NOW
+        List<ObservationSnapshot> dock = List.of(
+            snap("obs-2", t.plusHours(1), "Acoustic", 20.0)
+        );
+
+        ReconciledTelemetry result =
+            TelemetryReconciler.merge(synced, dock, POLICY);
+
+        assertEquals(2, result.observations().size());
+    }
+
+    @Test
+    void merge_emptyDock_returnsSyncedUnchanged()
+    {
+        Instant t = Instant.parse("2026-06-01T12:00:00Z");
+
+        List<ObservationSnapshot> synced = List.of(
+            snap("obs-1", t, "Radiation", 30.0)
+        );
+
+        ReconciledTelemetry result =
+            TelemetryReconciler.merge(
+                synced,
+                List.of(),
+                POLICY
             );
 
-        assertFalse(result.meetsThreshold());
+        assertEquals(1, result.observations().size());
+        assertEquals(0, result.duplicateCount());
     }
 
     private static ObservationSnapshot snap(
-        String isoTime,
+        String id,
+        Instant time,
         String sensorType,
         double strength
     )
     {
         return new ObservationSnapshot(
-            Instant.parse(isoTime),
+            new ObservationId(id),
+            time,
             new SensorType(sensorType),
             strength
         );
     }
 }
 \end{ridercode}
-\captionof{codesnippet}{Table-driven tests for detection confidence}
-\label{lst:fcis-detection-test}
+\captionof{codesnippet}{Table-driven tests for telemetry reconciliation}
+\label{lst:fcis-reconciliation-test}
 
-Adding a new sensor weight or changing the minimum observation count is a one-file change with tests that run in milliseconds.\todoinref{property-based testing chapter for fuzzing ObservationSnapshot lists}
+Changing the deduplication window or the keep-stronger rule is a one-file change with tests that run in milliseconds.\todoinref{property-based testing chapter for fuzzing merged ObservationSnapshot lists}
 
 \section{Recommended Package Layout}
 \label{sec:fcis_package_layout}
@@ -715,29 +804,29 @@ FCIS benefits from explicit package boundaries. The rule is simple: \texttt{core
 .3 \foldericon\ triangulation/.
 .4 \fileicon\ KaijuPositionEstimator.java.
 .4 \fileicon\ AnnularSector.java.
-.3 \foldericon\ detection/.
-.4 \fileicon\ DetectionConfidenceCalculator.java.
-.4 \fileicon\ DetectionAssessment.java.
+.3 \foldericon\ telemetry/.
+.4 \fileicon\ TelemetryReconciler.java.
+.4 \fileicon\ ReconciledTelemetry.java.
 .4 \fileicon\ ObservationSnapshot.java.
 .2 \foldericon\ shell/.
 .3 \foldericon\ triangulation/.
 .4 \fileicon\ TriangulateKaijuPositionService.java.
-.3 \foldericon\ detection/.
-.4 \fileicon\ AssessKaijuDetectionService.java.
+.3 \foldericon\ telemetry/.
+.4 \fileicon\ ReconcileMissionTelemetryService.java.
 .3 \foldericon\ persistence/.
 .4 \fileicon\ JdbcObservationDao.java.
 .2 \foldericon\ presentation/.
 .3 \foldericon\ web/.
-.4 \fileicon\ KaijuDetectionController.java.
+.4 \fileicon\ MissionTelemetryController.java.
 }
 \end{minipage}
-\caption{FCIS-oriented package layout for triangulation and detection examples.}
+\caption{FCIS-oriented package layout for triangulation and telemetry examples.}
 \label{fig:fcis_package_layout}
 \end{figure}
 
 Figure~\ref{fig:fcis_package_layout} groups code by FCIS role rather than only by technical layer. You can combine this with layered or hexagonal folders: for example, \texttt{shell.triangulation} may still contain \texttt{adapter} sub-packages behind ports from Chapter~\ref{ch:hexagonal}. The invariant is that \texttt{core} never imports them.
 
-\textbf{Mapping entities at the boundary:} persistence entities such as \texttt{ObservationEntity} stay in the shell. Map to \texttt{ObservationSnapshot} before calling \texttt{DetectionConfidenceCalculator}. Similarly, \texttt{Sensor} domain records from the hexagonal example are shell-side; \texttt{AnnularSector} is the core input after polling.
+\textbf{Mapping entities at the boundary:} persistence entities such as \texttt{ObservationEntity} stay in the shell. Map to \texttt{ObservationSnapshot} before calling \texttt{TelemetryReconciler}. Similarly, \texttt{Sensor} domain records from the hexagonal example are shell-side; \texttt{AnnularSector} is the core input after polling.
 
 \section{Testing the Functional Core}
 \label{sec:fcis_testing}
@@ -748,7 +837,7 @@ Figure~\ref{fig:fcis_package_layout} groups code by FCIS role rather than only b
 \begin{itemize}
     \item \textbf{Functional core:} unit tests with fixed inputs; no Spring context, no test containers, no mocked repositories. Aim for branch coverage on rules and calculations.
     \item \textbf{Imperative shell:} integration tests that verify wiring---SQL mappings, transaction rollback, HTTP status codes. These tests are slower and fewer in number.
-    \item \textbf{End-to-end:} optional smoke tests through the UI or API; not the primary place to prove scoring math.
+    \item \textbf{End-to-end:} optional smoke tests through the UI or API; not the primary place to prove reconciliation logic.
 \end{itemize}
 
 \subsection{Contrast with Port-Based Testing}
@@ -761,8 +850,9 @@ Hexagonal architecture (Chapter~\ref{ch:hexagonal}) tests use cases by substitut
 
 \begin{itemize}
     \item Pass time, configuration thresholds, and feature flags \textit{into} the core as parameters rather than reading static singletons.
-    \item Prefer many small pure functions over one large \texttt{assess} method when branches multiply; each function gets its own focused test.
+    \item Prefer many small pure functions over one large \texttt{merge} method when branches multiply; each function gets its own focused test.
     \item When a shell test fails, determine whether the bug is in wiring (shell) or rules (core) before fixing; mixing fixes across the boundary recreates a fat service.
+    \item Reconciliation cores such as \texttt{TelemetryReconciler} are good candidates for property-based tests later.\todoinref{property-based testing chapter for merge invariants}
 \end{itemize}
 
 \section{Practical Trade-offs}
@@ -775,7 +865,7 @@ Functional Core, Imperative Shell is a deliberate way to spend a little structur
 
 When the investment fits the problem, FCIS delivers:
 \begin{itemize}
-    \item \textbf{Fast rule tests:} complex logic runs in unit tests without mocks, as in Code snippets~\ref{lst:fcis-triangulation-test} and~\ref{lst:fcis-detection-test},
+    \item \textbf{Fast rule tests:} complex logic runs in unit tests without mocks, as in Code snippets~\ref{lst:fcis-triangulation-test} and~\ref{lst:fcis-reconciliation-test},
     \item \textbf{Maintainability:} business rule changes concentrate in \texttt{core} packages, away from JDBC and HTTP,
     \item \textbf{Readability:} the imperative sandwich makes read-compute-write explicit, as in Figure~\ref{fig:fcis_imperative_sandwich},
     \item \textbf{Concurrency safety:} pure cores avoid shared mutable state during calculation,
@@ -847,12 +937,12 @@ Finally, some mistakes come from structure without discipline:
     \item and applying FCIS to every class uniformly instead of focusing on calculation-heavy areas.
 \end{itemize}
 
-Most mistakes boil down to the same rule: the core must be honest and pure; the shell owns the messy world. When that holds, both Abyssal Watch examples in this chapter stay easy to evolve---new sensor weights in \texttt{DetectionConfidenceCalculator}, better fusion in \texttt{KaijuPositionEstimator}, without rewiring the ocean.
+Most mistakes boil down to the same rule: the core must be honest and pure; the shell owns the messy world. When that holds, both Abyssal Watch examples in this chapter stay easy to evolve---deduplication rules in \texttt{TelemetryReconciler}, better fusion in \texttt{KaijuPositionEstimator}, without rewiring the ocean.
 
 \needspace{8\baselineskip}
 \subsection{Closing Thoughts}
 \label{sec:fcis_closing}
 
-We opened with functional programming vocabulary---pure and impure functions, honest signatures, immutable values, and side effects---then applied those ideas through the imperative sandwich. The triangulation example (Section~\ref{sec:fcis_example_triangulation}) moved geometric fusion into \texttt{KaijuPositionEstimator}; the detection example (Section~\ref{sec:fcis_example_detection}) moved scoring into \texttt{DetectionConfidenceCalculator}. In both cases the shell reads and writes; the core computes.
+We opened with functional programming vocabulary---pure and impure functions, honest signatures, immutable values, and side effects---then applied those ideas through the imperative sandwich. The triangulation example (Section~\ref{sec:fcis_example_triangulation}) moved geometric fusion into \texttt{KaijuPositionEstimator}; the telemetry example (Section~\ref{sec:fcis_example_reconciliation}) moved merge and deduplication into \texttt{TelemetryReconciler}. In both cases the shell reads and writes; the core computes.
 
 FCIS works in Java without adopting a new framework. Records, static pure methods, explicit packages, and disciplined imports are enough to start. Combine FCIS with the architectural styles elsewhere in this book: layers and hexagons tell you how to organise modules and ports; FCIS tells you how to keep the behaviour inside them testable and honest.
